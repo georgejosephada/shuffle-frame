@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+    <PreferenceCategory app:title="Slideshow" app:iconSpaceReserved="false">
+        <ListPreference app:key="photo_seconds" app:title="Show each photo for" app:defaultValue="10"
+            app:entries="@array/photo_seconds_labels" app:entryValues="@array/photo_seconds_values"
+            app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
+        <ListPreference app:key="fit_mode" app:title="Photo framing" app:defaultValue="fit"
+            app:entries="@array/fit_labels" app:entryValues="@array/fit_values"
+            app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="blur_background" app:title="Blurred background behind photos"
+            app:summary="Fills the bars around photos that don't match the screen shape" app:defaultValue="true" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="ken_burns" app:title="Slow pan and zoom" app:defaultValue="true" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="show_caption" app:title="Show date and album name" app:defaultValue="true" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="balance_albums" app:title="Equal time per album"
+            app:summary="Off: every item equally likely. On: small albums show as often as big ones." app:defaultValue="false" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="auto_start" app:title="Start slideshow when the app opens" app:defaultValue="false" app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+    <PreferenceCategory app:title="Videos" app:iconSpaceReserved="false">
+        <SwitchPreferenceCompat app:key="include_videos" app:title="Include videos" app:defaultValue="true" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="mute_videos" app:title="Mute videos" app:defaultValue="true" app:iconSpaceReserved="false" />
+        <ListPreference app:key="max_video_seconds" app:title="Video length" app:defaultValue="0"
+            app:entries="@array/video_cap_labels" app:entryValues="@array/video_cap_values"
+            app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+    <PreferenceCategory app:title="Sync" app:iconSpaceReserved="false">
+        <ListPreference app:key="sync_interval" app:title="Check albums for changes" app:defaultValue="30"
+            app:entries="@array/sync_labels" app:entryValues="@array/sync_values"
+            app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="wifi_only" app:title="Background sync on Wi-Fi only" app:defaultValue="true" app:iconSpaceReserved="false" />
+        <Preference app:key="battery" app:title="Allow background activity" app:iconSpaceReserved="false" />
+        <Preference app:key="storage" app:title="Space used on this tablet" app:selectable="false" app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+    <PreferenceCategory app:title="Frame mode" app:iconSpaceReserved="false">
+        <SwitchPreferenceCompat app:key="frame_mode" app:title="Start the slideshow when the screen turns off"
+            app:summary="Turns the screen back on with your photos, like a photo frame. Close it with ✕ or the power button; it stays off until you next unlock."
+            app:defaultValue="true" app:iconSpaceReserved="false" />
+        <Preference app:key="full_screen" app:title="⚠ Allow notifications and full-screen notifications"
+            app:summary="Frame mode turns the screen on through a full-screen notification. Tap and switch both on."
+            app:dependency="frame_mode" app:isPreferenceVisible="false" app:iconSpaceReserved="false" />
+        <ListPreference app:key="frame_min_battery" app:title="Only when battery is at least" app:defaultValue="20"
+            app:entries="@array/battery_labels" app:entryValues="@array/battery_values"
+            app:useSimpleSummaryProvider="true" app:dependency="frame_mode" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="frame_skip_power_saver" app:title="Not in battery saver"
+            app:summary="Tip: set battery saver to turn on automatically at a level you choose, and frame mode stops there too"
+            app:defaultValue="true" app:dependency="frame_mode" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="frame_skip_airplane" app:title="Not in airplane mode"
+            app:defaultValue="false" app:dependency="frame_mode" app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+    <PreferenceCategory app:title="About" app:iconSpaceReserved="false">
+        <Preference app:key="version" app:title="Version" app:selectable="false" app:iconSpaceReserved="false" />
+        <Preference app:key="check_updates" app:title="Check for updates now" app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+</PreferenceScreen>
