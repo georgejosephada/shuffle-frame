@@ -40,6 +40,8 @@ android {
         }
         release {
             isMinifyEnabled = false
+            // Personal sideloaded app: keep `adb shell run-as` working so the tablet's data can be inspected.
+            isDebuggable = true
             signingConfig = signingConfigs.getByName("frame")
         }
     }

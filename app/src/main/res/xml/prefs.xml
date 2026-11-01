@@ -17,6 +17,9 @@
     </PreferenceCategory>
     <PreferenceCategory app:title="Videos" app:iconSpaceReserved="false">
         <SwitchPreferenceCompat app:key="include_videos" app:title="Include videos" app:defaultValue="true" app:iconSpaceReserved="false" />
+        <ListPreference app:key="video_quality" app:title="Video quality" app:defaultValue="hd"
+            app:entries="@array/video_quality_labels" app:entryValues="@array/video_quality_values"
+            app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
         <SwitchPreferenceCompat app:key="mute_videos" app:title="Mute videos" app:defaultValue="true" app:iconSpaceReserved="false" />
         <ListPreference app:key="max_video_seconds" app:title="Video length" app:defaultValue="0"
             app:entries="@array/video_cap_labels" app:entryValues="@array/video_cap_values"
@@ -29,6 +32,14 @@
         <SwitchPreferenceCompat app:key="wifi_only" app:title="Background sync on Wi-Fi only" app:defaultValue="true" app:iconSpaceReserved="false" />
         <Preference app:key="battery" app:title="Allow background activity" app:iconSpaceReserved="false" />
         <Preference app:key="storage" app:title="Space used on this tablet" app:selectable="false" app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+    <PreferenceCategory app:title="Album list backup" app:iconSpaceReserved="false">
+        <Preference app:key="backup_save" app:title="Save a backup copy…"
+            app:summary="Pick where, e.g. Google Drive. An automatic copy is also kept in Download/Shuffle Frame on this tablet. Keep it private: the links open your albums."
+            app:iconSpaceReserved="false" />
+        <Preference app:key="backup_restore" app:title="Restore from a backup…"
+            app:summary="Adds any album from the backup that isn't in the list; nothing is removed"
+            app:iconSpaceReserved="false" />
     </PreferenceCategory>
     <PreferenceCategory app:title="Frame mode" app:iconSpaceReserved="false">
         <SwitchPreferenceCompat app:key="frame_mode" app:title="Start the slideshow when the screen turns off"

@@ -7,6 +7,11 @@ import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.launch
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.appcompat.app.AppCompatActivity
@@ -26,10 +31,52 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     class Fragment : PreferenceFragmentCompat(), SharedPreferences.OnSharedPreferenceChangeListener {
+        private val app get() = requireActivity().application as App
+
+        private val saveBackup = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            if (uri == null) return@registerForActivityResult
+            val ctx = requireContext().applicationContext
+            app.scope.launch {
+                val ok = runCatching {
+                    ctx.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(AlbumBackup.toJson(Store.albums()).toByteArray()) }
+                }.isSuccess
+                toast(ctx, ctx.getString(if (ok) R.string.backup_saved else R.string.backup_failed, Store.albums().size))
+            }
+        }
+
+        private val openBackup = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri == null) return@registerForActivityResult
+            val ctx = requireContext().applicationContext
+            toast(ctx, ctx.getString(R.string.restore_started))
+            app.scope.launch {
+                val message = try {
+                    val text = ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() }
+                    val r = AlbumBackup.restore(ctx, AlbumBackup.parse(text))
+                    ctx.getString(R.string.restore_done, r.added, r.alreadyThere) +
+                        if (r.failed.isEmpty()) "" else "\n" + ctx.getString(R.string.restore_failed_some, r.failed.joinToString())
+                } catch (e: Exception) {
+                    ctx.getString(R.string.restore_failed, e.message ?: e.javaClass.simpleName)
+                }
+                toast(ctx, message)
+            }
+        }
+
+        private fun toast(ctx: android.content.Context, text: String) = Handler(Looper.getMainLooper()).post {
+            Toast.makeText(ctx, text, Toast.LENGTH_LONG).show()
+        }
+
         override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
             setPreferencesFromResource(R.xml.prefs, rootKey)
             findPreference<Preference>("battery")?.setOnPreferenceClickListener { requestBatteryExemption(); true }
             findPreference<Preference>("full_screen")?.setOnPreferenceClickListener { openFullScreenSettings(); true }
+            findPreference<Preference>("backup_save")?.setOnPreferenceClickListener {
+                saveBackup.launch("shuffle-frame-albums-${java.time.LocalDate.now()}.json")
+                true
+            }
+            findPreference<Preference>("backup_restore")?.setOnPreferenceClickListener {
+                openBackup.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
+                true
+            }
             findPreference<Preference>("check_updates")?.setOnPreferenceClickListener {
                 Updater.checkNow(requireContext())
                 it.summary = getString(R.string.update_checking)

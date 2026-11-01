@@ -19,10 +19,10 @@
     <string name="add_failed">Couldn\'t add album</string>
     <string name="no_link_in_share">No Google Photos album link found. In Google Photos open the album, tap Share, create a link, and share or paste that link.</string>
     <string name="link_hint">https://photos.app.goo.gl/…</string>
-    <string name="add_dialog_help">Paste the album\'s share link. In Google Photos: open the album → Share → Create link (or Copy link).</string>
+    <string name="add_dialog_help">Paste the album\'s share link. In Google Photos: open the album → Share → Create link (or Copy link).\n\nEverything in the album is included, whoever added it; nobody needs to tap Save.</string>
     <string name="summary_none">No albums yet</string>
     <string name="summary">%1$s and %2$s from %3$s · %4$s on this tablet</string>
-    <string name="empty_hint">To add an album:\n1. Open the album in the Google Photos app.\n2. Tap Share and create a link.\n3. Share it to Shuffle Frame, or copy it and tap Add album.\n\nPhotos you later add to these albums in Google Photos appear here automatically.</string>
+    <string name="empty_hint">To add an album:\n1. Open the album in the Google Photos app.\n2. Tap Share and create a link.\n3. Share it to Shuffle Frame, or copy it and tap Add album.\n\nEverything in these albums is included, whoever added it (nobody needs to tap Save), and photos added later appear here automatically.</string>
     <string name="not_synced_yet">Waiting for first sync</string>
     <string name="synced_ago">Synced %1$s</string>
     <string name="downloaded_of">%1$d of %2$d downloaded</string>
@@ -45,6 +45,12 @@
     <string name="setup_notifications">Allow notifications</string>
     <string name="setup_full_screen">Allow full-screen notifications</string>
     <string name="setup_battery">Allow background activity</string>
+    <string name="backup_saved">Saved a backup of %1$d albums</string>
+    <string name="backup_failed">Couldn\'t save the backup</string>
+    <string name="restore_started">Restoring albums…</string>
+    <string name="restore_done">Restore finished: %1$d added, %2$d already in the list</string>
+    <string name="restore_failed_some">Couldn\'t open: %1$s</string>
+    <string name="restore_failed">Restore failed: %1$s</string>
     <string name="setup_updates">Allow installing app updates</string>
     <string name="update_channel">App updates</string>
     <string name="update_ready">Shuffle Frame update ready</string>

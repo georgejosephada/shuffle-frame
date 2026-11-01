@@ -31,6 +31,8 @@ class Prefs(ctx: Context) {
     val includeVideos get() = sp.getBoolean("include_videos", true)
     val muteVideos get() = sp.getBoolean("mute_videos", true)
     val maxVideoSeconds get() = int("max_video_seconds", 0)
+    /** Full HD (Google's 1080p H.264, ~7x smaller) unless the user asks for originals. */
+    val originalVideos get() = sp.getString("video_quality", "hd") == "original"
     val syncMinutes get() = int("sync_interval", 30)
     val wifiOnly get() = sp.getBoolean("wifi_only", true)
     val autoStart get() = sp.getBoolean("auto_start", false)

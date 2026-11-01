@@ -34,6 +34,15 @@ object Store {
     private val broken = HashSet<String>()
     /** Items the user chose to hide on this tablet only. */
     private val hidden = HashSet<String>()
+    /** Videos stored in original quality that Google also offers in a smaller Full HD version. */
+    private val originals = HashSet<String>()
+    private var originalsTracked = false
+    /** state.json couldn't be read this run: keep every file until the album list is restored. */
+    private var loadFailed = false
+
+    private val _albumsChanged = MutableStateFlow(0L)
+    /** Bumped when the album list itself (links, titles, on/off) changes; drives the backup copy. */
+    val albumsChanged: StateFlow<Long> = _albumsChanged
 
     private val _version = MutableStateFlow(0L)
     /** Bumped whenever albums, listings or downloaded media change. */
@@ -48,6 +57,15 @@ object Store {
         coverDir = File(root, "covers").apply { mkdirs() }
         mediaDir.listFiles { f -> f.name.endsWith(".part") }?.forEach { it.delete() }
         load()
+        if (!originalsTracked) {
+            // Videos downloaded before quality tracking existed are originals (unless already transcoded).
+            items.values.forEach { m ->
+                m.values.filter { it.type == MediaType.VIDEO && it.key !in transcoded && mediaFile(it.key, it.type).exists() }
+                    .forEach { originals.add(it.key) }
+            }
+            originalsTracked = true
+            save()
+        }
     }
 
     fun mediaFile(key: String, type: MediaType) =
@@ -87,14 +105,17 @@ object Store {
         if (albums.containsKey(album.key)) return false
         albums[album.key] = album
         save(); bump()
+        _albumsChanged.update { it + 1 }
         return true
     }
 
     @Synchronized
     fun updateAlbum(key: String, change: (Album) -> Album) {
         val a = albums[key] ?: return
-        albums[key] = change(a)
+        val b = change(a)
+        albums[key] = b
         save(); bump()
+        if (a.title != b.title || a.enabled != b.enabled || a.shareUrl != b.shareUrl) _albumsChanged.update { it + 1 }
     }
 
     @Synchronized
@@ -104,6 +125,7 @@ object Store {
         for (it in gone) if (!isReferenced(it.key)) deleteMedia(it.key)
         coverFile(key).delete()
         save(); bump()
+        _albumsChanged.update { it + 1 }
     }
 
     /**
@@ -130,6 +152,18 @@ object Store {
         return fresh.values.filter { it.missCount == 0 && !mediaFile(it.key, it.type).exists() }
     }
 
+    /** Records which quality a video was stored in; [shrinkable] means a smaller version exists. */
+    @Synchronized
+    fun setOriginal(key: String, shrinkable: Boolean) {
+        if (shrinkable) originals.add(key) else originals.remove(key)
+        save()
+    }
+
+    /** Stored original-quality videos that could be replaced by Google's Full HD version, biggest first. */
+    @Synchronized
+    fun shrinkQueue(): List<Item> = originals.mapNotNull { k -> items.values.firstNotNullOfOrNull { it[k] } }
+        .sortedByDescending { mediaFile(it.key, it.type).length() }
+
     @Synchronized
     fun transcodeQueue(): List<Item> = needsTranscode.mapNotNull { k ->
         items.values.firstNotNullOfOrNull { it[k] }
@@ -138,6 +172,7 @@ object Store {
     @Synchronized
     fun markTranscoded(key: String) {
         needsTranscode.remove(key)
+        originals.remove(key)
         transcoded.add(key)
         save(); bump()
     }
@@ -198,6 +233,7 @@ object Store {
         transcoded.remove(key)
         broken.remove(key)
         hidden.remove(key)
+        originals.remove(key)
     }
 
     private fun stateFile() = AtomicFile(File(root, "state.json"))
@@ -209,6 +245,9 @@ object Store {
     /** Deletes media and covers nothing refers to any more (e.g. downloads that finished after their album was removed). */
     @Synchronized
     fun sweepOrphans() {
+        // After a failed load the media are still valid (named by item key) and get reused once
+        // the album list is restored, so never treat them as orphans then.
+        if (loadFailed || items.values.all { it.isEmpty() }) return
         val keep = HashSet<String>()
         items.values.forEach { keep.addAll(it.keys) }
         mediaDir.listFiles()?.forEach { f ->
@@ -227,6 +266,8 @@ object Store {
         o.put("transcoded", JSONArray(transcoded.toList()))
         o.put("broken", JSONArray(broken.toList()))
         o.put("hidden", JSONArray(hidden.toList()))
+        o.put("originals", JSONArray(originals.toList()))
+        o.put("originalsTracked", originalsTracked)
         val file = stateFile()
         val out = file.startWrite()
         try {
@@ -263,9 +304,12 @@ object Store {
             o.optJSONArray("transcoded")?.strings()?.let(transcoded::addAll)
             o.optJSONArray("broken")?.strings()?.let(broken::addAll)
             o.optJSONArray("hidden")?.strings()?.let(hidden::addAll)
+            o.optJSONArray("originals")?.strings()?.let(originals::addAll)
+            originalsTracked = o.optBoolean("originalsTracked", false)
         } catch (e: Exception) {
             android.util.Log.e("Store", "Could not read state; keeping it as state.json.bad", e)
             file.baseFile.renameTo(File(root, "state.json.bad"))
+            loadFailed = true
         }
     }
 

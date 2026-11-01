@@ -7,8 +7,10 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 object SyncScheduler {
@@ -58,7 +60,17 @@ object SyncScheduler {
             .setConstraints(constraints(ctx, userInitiated))
             .setInputData(workDataOf(SyncWorker.KEY_ALBUM to albumKey))
             .build()
-        if (albumKey == null) WorkManager.getInstance(ctx).enqueueUniqueWork(NOW, ExistingWorkPolicy.KEEP, req)
-        else WorkManager.getInstance(ctx).enqueueUniqueWork(ALBUM, ExistingWorkPolicy.APPEND_OR_REPLACE, req)
+        val wm = WorkManager.getInstance(ctx)
+        if (albumKey != null) {
+            wm.enqueueUniqueWork(ALBUM, ExistingWorkPolicy.APPEND_OR_REPLACE, req)
+            return
+        }
+        // A sync already running listed the albums when it started, so queue exactly one more run
+        // behind it (things saved meanwhile are picked up); if one is already waiting, that's enough.
+        val infos = wm.getWorkInfosForUniqueWork(NOW)
+        infos.addListener({
+            val waiting = runCatching { infos.get() }.getOrDefault(emptyList()).any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED }
+            if (!waiting) wm.enqueueUniqueWork(NOW, ExistingWorkPolicy.APPEND_OR_REPLACE, req)
+        }, Executors.newSingleThreadExecutor())
     }
 }

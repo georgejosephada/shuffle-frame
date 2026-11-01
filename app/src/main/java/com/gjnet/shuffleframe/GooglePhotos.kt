@@ -30,6 +30,7 @@ object GooglePhotos {
         .build()
 
     class Resolved(val albumKey: String, val authKey: String, val title: String)
+    class HttpStatusException(val code: Int) : IOException("HTTP $code")
     class Listing(val title: String?, val coverUrl: String?, val items: List<Item>)
 
     private val LINK = Regex("""https?://(?:photos\.app\.goo\.gl|goo\.gl/photos|photos\.google\.com)/[^\s"'<>]+""")
@@ -169,7 +170,7 @@ object GooglePhotos {
         val part = File(dest.path + ".part")
         try {
             http.newCall(Request.Builder().url(url).header("User-Agent", UA).build()).execute().use { r ->
-                if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
+                if (!r.isSuccessful) throw HttpStatusException(r.code)
                 if (r.header("Content-Type").orEmpty().startsWith("text/")) {
                     throw IOException("Google is still processing this item")
                 }
