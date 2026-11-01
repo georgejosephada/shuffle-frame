@@ -58,6 +58,7 @@ object Sync {
                 val outOfSpace = AtomicBoolean(false)
                 var finished = false
                 try {
+                    clearLeftovers(ctx)
                     val albums = Store.albums().filter { if (onlyAlbum != null) it.key == onlyAlbum else it.enabled }
                     val prefs = Prefs(ctx)
                     val policy = prefs.videoQuality
@@ -295,6 +296,15 @@ object Sync {
     }
 
     private fun freeBytes(ctx: Context) = StatFs(ctx.filesDir.path).availableBytes
+
+    /**
+     * Deletes temporary originals, conversions and downloads left by a sync that was cut short
+     * (app update, reboot, the system stopping it). Only one sync runs at a time, so none is in use.
+     */
+    private fun clearLeftovers(ctx: Context) {
+        val prefixes = listOf("original-", "converted-", "compact-")
+        ctx.cacheDir.listFiles()?.forEach { f -> if (prefixes.any { f.name.startsWith(it) }) f.delete() }
+    }
 
     /** Generous guess at an original's size (iPhone 4K60 HEVC is ~6 MB/s) before downloading it. */
     private fun originalEstimate(item: Item) = (item.durationMs / 1000 * (12L shl 20)).coerceIn(200L shl 20, 8L shl 30)
