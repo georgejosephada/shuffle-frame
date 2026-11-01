@@ -12,10 +12,11 @@ Google Photos albums (photos and videos), kept in sync automatically.
   sign-in is needed; anyone with an album's link can view it.
 - Background sync (WorkManager, every 30 min by default, Wi-Fi only, plus whenever the slideshow
   starts) mirrors each enabled album into app storage. It lists every album first (4 at a time),
-  then downloads new items 6 at a time, photos first. Photos are screen-sized JPEGs rendered by
-  Google (so HEIC needs no on-device decoding). Videos are Google's Full HD H.264 version (about
-  7x smaller than 4K originals) unless Settings → Video quality is "Original"; stored originals
-  are shrunk in the background. Downloads pause below 5 GB free.
+  then downloads new items 6 at a time, photos first. Photos are screen-sized WebP renders from
+  Google (about 40% smaller than JPEG; HEIC needs no on-device decoding). Videos above 1080p, and
+  H.264 videos, are converted on the tablet's hardware encoder to 1080p HEVC at ~12.5 Mbit/s with
+  HDR kept (Settings → Video quality: converted / Google compact / original). Existing files are
+  converted in the background. Downloads pause below 5 GB free.
 - Everything in a shared album is included, whoever added it; nobody needs to tap "Save".
 - **Deletions mirror**: an item removed from the album is deleted from the tablet on the next sync.
   Safety net: if one sync would remove more than half of an album (or the album lists as empty),
@@ -39,8 +40,10 @@ Google Photos albums (photos and videos), kept in sync automatically.
 - **Album list backup**: an automatic copy is kept in `Download/Shuffle Frame` on the tablet;
   Settings has *Save a backup copy…* (e.g. to Google Drive) and *Restore from a backup…* (adds
   missing albums). The file holds the share links, so keep it private.
-- **Self-update**: once a day (or Settings → *Check for updates now*) the app installs the latest
-  GitHub release of this repository if it is newer.
+- **Self-update**: once a day the app downloads a newer GitHub release of this repository in the
+  background and shows an "update ready" notification. It installs when you next open the app
+  (or tap the notification, or Settings → *Check for updates now*), because Google Play Protect
+  asks about every new sideloaded version and that question shouldn't pop up over the frame.
 
 ## Releasing an update
 
