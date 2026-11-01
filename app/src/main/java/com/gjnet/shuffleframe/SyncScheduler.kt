@@ -66,11 +66,18 @@ object SyncScheduler {
             return
         }
         // A sync already running listed the albums when it started, so queue exactly one more run
-        // behind it (things saved meanwhile are picked up); if one is already waiting, that's enough.
+        // behind it (things saved meanwhile are picked up). A run that is only waiting (e.g. one
+        // rescheduled with a delay after the app was updated) is replaced so this one starts now.
         val infos = wm.getWorkInfosForUniqueWork(NOW)
         infos.addListener({
-            val waiting = runCatching { infos.get() }.getOrDefault(emptyList()).any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED }
-            if (!waiting) wm.enqueueUniqueWork(NOW, ExistingWorkPolicy.APPEND_OR_REPLACE, req)
+            val states = runCatching { infos.get() }.getOrDefault(emptyList()).map { it.state }
+            val running = WorkInfo.State.RUNNING in states
+            val waiting = states.any { it == WorkInfo.State.ENQUEUED || it == WorkInfo.State.BLOCKED }
+            when {
+                running && waiting -> Unit  // a follow-up is already queued behind the running sync
+                running -> wm.enqueueUniqueWork(NOW, ExistingWorkPolicy.APPEND_OR_REPLACE, req)
+                else -> wm.enqueueUniqueWork(NOW, ExistingWorkPolicy.REPLACE, req)
+            }
         }, Executors.newSingleThreadExecutor())
     }
 }
