@@ -10,10 +10,13 @@ Google Photos albums (photos and videos), kept in sync automatically.
   third-party apps read existing albums on 2025-03-31, so the app reads the album the same way the
   public share page does (`GooglePhotos.kt`, internal `snAcKc` request). No API key or Google
   sign-in is needed; anyone with an album's link can view it.
-- Background sync (WorkManager, every 15 min by default, Wi-Fi only, plus whenever the slideshow
-  starts) mirrors each enabled album into app storage: photos as screen-sized JPEGs rendered by
-  Google (so HEIC needs no on-device decoding), videos as original files (HEVC plays on the
-  hardware decoder; if one fails, Google's 1080p H.264 version is fetched instead).
+- Background sync (WorkManager, every 30 min by default, Wi-Fi only, plus whenever the slideshow
+  starts) mirrors each enabled album into app storage. It lists every album first (4 at a time),
+  then downloads new items 6 at a time, photos first. Photos are screen-sized JPEGs rendered by
+  Google (so HEIC needs no on-device decoding). Videos are Google's Full HD H.264 version (about
+  7x smaller than 4K originals) unless Settings → Video quality is "Original"; stored originals
+  are shrunk in the background. Downloads pause below 5 GB free.
+- Everything in a shared album is included, whoever added it; nobody needs to tap "Save".
 - **Deletions mirror**: an item removed from the album is deleted from the tablet on the next sync.
   Safety net: if one sync would remove more than half of an album (or the album lists as empty),
   the items are hidden at once and only deleted when the next sync agrees. A failed or partial
@@ -32,7 +35,23 @@ Google Photos albums (photos and videos), kept in sync automatically.
   until the tablet is next unlocked. Android's own screen saver isn't used because OxygenOS
   hides it and never runs it on battery (`mDreamsEnabledOnBatteryConfig=false`).
 - A *Finish setting up* card on the main screen lists any missing one-time permission
-  (notifications, full-screen notifications, background activity).
+  (notifications, full-screen notifications, installing updates, background activity).
+- **Album list backup**: an automatic copy is kept in `Download/Shuffle Frame` on the tablet;
+  Settings has *Save a backup copy…* (e.g. to Google Drive) and *Restore from a backup…* (adds
+  missing albums). The file holds the share links, so keep it private.
+- **Self-update**: once a day (or Settings → *Check for updates now*) the app installs the latest
+  GitHub release of this repository if it is newer.
+
+## Releasing an update
+
+```bash
+./release.sh "What changed"
+```
+
+Bumps `version.properties`, builds the signed APK, commits, pushes and publishes a GitHub
+release; the tablet installs it within a day. Every build is signed with
+`~/Android/keys/shuffleframe.jks`, which is not in the repo: **back it up**, since Android only
+accepts updates signed with the same key.
 
 ## Build and install
 
