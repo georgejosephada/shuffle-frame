@@ -98,6 +98,10 @@ class MainActivity : AppCompatActivity() {
         val locked = getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked
         if (!locked && getSystemService(android.os.PowerManager::class.java).isInteractive) {
             FrameService.setSnoozed(this, false)
+            // The user is at the tablet: install a downloaded update now (Play Protect may ask).
+            val tapped = intent?.getBooleanExtra(Updater.EXTRA_INSTALL, false) == true
+            intent?.removeExtra(Updater.EXTRA_INSTALL)
+            (application as App).scope.launch { Updater.installPending(this@MainActivity, automatic = !tapped) }
         }
         renderSetup()
         FrameService.sync(this)

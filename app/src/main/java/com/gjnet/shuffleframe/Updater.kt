@@ -29,9 +29,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Self-update from the GitHub releases of [BuildConfig.UPDATE_REPO]: once a day, if the latest
- * release carries a higher version code, download its APK and install it. Android only accepts
- * it when it is signed with the same key, so a tampered download can't replace the app.
+ * Self-update from the GitHub releases of [BuildConfig.UPDATE_REPO]. Once a day a newer release's
+ * APK is downloaded in the background and kept ready; it is installed when the user is at the
+ * tablet (opening the app, the "update ready" notification, or "Check for updates now"), because
+ * Play Protect may ask about each new version and that prompt shouldn't pop up over the frame.
+ * Android only accepts an APK signed with the same key, so a tampered download can't replace the app.
  */
 object Updater {
     private const val ASSET = "ShuffleFrame.apk"
@@ -39,6 +41,10 @@ object Updater {
     private const val NOTIFICATION_ID = 4
     private const val KEY_STATUS = "update_status"
     const val KEY_RESUME_FRAME = "resume_frame_after_update"
+    private const val KEY_LAST_AUTO_INSTALL = "update_last_auto_install"
+    /** Opening the app retries a dismissed install at most this often. */
+    private const val AUTO_INSTALL_INTERVAL_MS = 12 * 60 * 60 * 1000L
+    const val EXTRA_INSTALL = "install_update"
     private val lock = Mutex()
 
     class Release(val versionCode: Long, val versionName: String, val apkUrl: String)
@@ -51,9 +57,11 @@ object Updater {
         WorkManager.getInstance(ctx).enqueueUniquePeriodicWork("update-check", ExistingPeriodicWorkPolicy.KEEP, req)
     }
 
+    /** "Check for updates now": the user is at the tablet, so a newer version installs right away. */
     fun checkNow(ctx: Context) {
         val req = OneTimeWorkRequestBuilder<UpdateWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setInputData(androidx.work.workDataOf(UpdateWorker.KEY_INSTALL to true))
             .build()
         WorkManager.getInstance(ctx).enqueueUniqueWork("update-now", ExistingWorkPolicy.KEEP, req)
     }
@@ -90,36 +98,100 @@ object Updater {
         throw IOException("release $tag has no $ASSET")
     }
 
-    suspend fun run(ctx: Context) = lock.withLock { runLocked(ctx) }
+    /** The downloaded update waiting to be installed. */
+    private fun pendingFile(ctx: Context) = File(ctx.filesDir, "update/$ASSET")
 
-    private fun runLocked(ctx: Context) {
+    /** Version code of the waiting update, or null if there is none newer than what's installed. */
+    fun pendingVersion(ctx: Context): Long? {
+        val f = pendingFile(ctx)
+        if (!f.exists()) return null
+        val code = ctx.packageManager.getPackageArchiveInfo(f.path, 0)?.longVersionCode
+        if (code == null || code <= installedVersion(ctx)) {
+            f.delete()  // already installed (or unreadable)
+            return null
+        }
+        return code
+    }
+
+    /** Checks GitHub and downloads a newer version; installs it straight away only if [installNow]. */
+    suspend fun run(ctx: Context, installNow: Boolean) = lock.withLock { runLocked(ctx, installNow) }
+
+    private fun runLocked(ctx: Context, installNow: Boolean) {
         val release = latest()
         if (release.versionCode <= installedVersion(ctx)) {
+            pendingFile(ctx).delete()
             setStatus(ctx, ctx.getString(R.string.update_none, java.text.DateFormat.getDateTimeInstance().format(java.util.Date())))
             return
         }
-        if (!ctx.packageManager.canRequestPackageInstalls()) {
-            setStatus(ctx, ctx.getString(R.string.update_needs_permission, release.versionName))
-            return
-        }
-        val apk = File.createTempFile("update", ".apk", ctx.cacheDir)
-        val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
-        try {
-            GooglePhotos.download(release.apkUrl, apk)
-            val info = ctx.packageManager.getPackageArchiveInfo(apk.path, 0)
-            if (info?.packageName != ctx.packageName || info.longVersionCode != release.versionCode) {
-                throw IOException("Downloaded file isn't the expected Shuffle Frame build")
+        if (pendingVersion(ctx) != release.versionCode) {
+            val tmp = File.createTempFile("update", ".apk", ctx.cacheDir)
+            try {
+                GooglePhotos.download(release.apkUrl, tmp)
+                val info = ctx.packageManager.getPackageArchiveInfo(tmp.path, 0)
+                if (info?.packageName != ctx.packageName || info.longVersionCode != release.versionCode) {
+                    throw IOException("Downloaded file isn't the expected Shuffle Frame build")
+                }
+                val dest = pendingFile(ctx).apply { parentFile?.mkdirs() }
+                if (!tmp.renameTo(dest)) { tmp.copyTo(dest, overwrite = true) }
+            } finally {
+                tmp.delete()
             }
-            setStatus(ctx, ctx.getString(R.string.update_installing, release.versionName))
-            // Bring the frame back after the update if it was on screen.
-            prefs.edit().putBoolean(KEY_RESUME_FRAME, SlideshowActivity.visible > 0).commit()
-            install(ctx, apk)
+        }
+        if (installNow) installPending(ctx)
+        else {
+            setStatus(ctx, ctx.getString(R.string.update_downloaded, release.versionName))
+            notifyReady(ctx, release.versionName)
+        }
+    }
+
+    /**
+     * Installs the waiting update, if any. [automatic] (the app was simply opened) retries a
+     * dismissed install at most every 12 hours; the notification and Settings always try.
+     */
+    fun installPending(ctx: Context, automatic: Boolean = false): Boolean {
+        pendingVersion(ctx) ?: return false
+        val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
+        val now = System.currentTimeMillis()
+        if (automatic && now - prefs.getLong(KEY_LAST_AUTO_INSTALL, 0) < AUTO_INSTALL_INTERVAL_MS) return false
+        if (!ctx.packageManager.canRequestPackageInstalls()) {
+            setStatus(ctx, ctx.getString(R.string.update_needs_permission, ""))
+            return false
+        }
+        prefs.edit().putLong(KEY_LAST_AUTO_INSTALL, now).putBoolean(KEY_RESUME_FRAME, SlideshowActivity.visible > 0).commit()
+        ctx.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+        setStatus(ctx, ctx.getString(R.string.update_installing, ""))
+        return try {
+            install(ctx, pendingFile(ctx))
+            true
         } catch (e: Exception) {
             prefs.edit().remove(KEY_RESUME_FRAME).apply()
-            throw e
-        } finally {
-            apk.delete()
+            setStatus(ctx, ctx.getString(R.string.update_failed, e.message ?: e.javaClass.simpleName))
+            false
         }
+    }
+
+    /** "Update ready" notification; tapping it opens the app and installs. */
+    private fun notifyReady(ctx: Context, versionName: String) {
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL, ctx.getString(R.string.update_channel), NotificationManager.IMPORTANCE_DEFAULT)
+        )
+        val open = PendingIntent.getActivity(
+            ctx, 1,
+            Intent(ctx, MainActivity::class.java).putExtra(EXTRA_INSTALL, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        nm.notify(
+            NOTIFICATION_ID,
+            NotificationCompat.Builder(ctx, CHANNEL)
+                .setSmallIcon(R.drawable.ic_frame)
+                .setContentTitle(ctx.getString(R.string.update_ready_named, versionName))
+                .setContentText(ctx.getString(R.string.update_tap))
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build(),
+        )
     }
 
     private fun install(ctx: Context, apk: File) {
@@ -183,9 +255,13 @@ object Updater {
 }
 
 class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
+    companion object {
+        const val KEY_INSTALL = "install"
+    }
+
     override suspend fun doWork(): Result {
         try {
-            Updater.run(applicationContext)
+            Updater.run(applicationContext, installNow = inputData.getBoolean(KEY_INSTALL, false))
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             // Shown in Settings; tried again at the next daily check.
@@ -201,7 +277,12 @@ class InstallResultReceiver : BroadcastReceiver() {
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             @Suppress("DEPRECATION")
             val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
-            if (confirm != null) Updater.notifyConfirm(context, confirm)
+            if (confirm != null) {
+                // Installs start while the user is in the app, so show the confirmation right away;
+                // if Android doesn't allow that, a notification offers it instead.
+                val shown = runCatching { context.startActivity(Intent(confirm).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+                if (!shown) Updater.notifyConfirm(context, confirm)
+            }
         }
         Updater.onResult(context, status, intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE))
     }
