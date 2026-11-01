@@ -20,10 +20,18 @@
         <item>0</item><item>15</item><item>30</item><item>60</item><item>120</item>
     </string-array>
     <string-array name="video_quality_labels">
-        <item>Full HD (about 7× smaller, recommended)</item><item>Original quality</item>
+        <item>1080p HEVC, quality kept (converted on the tablet)</item>
+        <item>1080p compact (Google\'s version, smallest)</item>
+        <item>Original files</item>
     </string-array>
     <string-array name="video_quality_values">
-        <item>hd</item><item>original</item>
+        <item>convert</item><item>google</item><item>original</item>
+    </string-array>
+    <string-array name="photo_format_labels">
+        <item>WebP (about 40% smaller)</item><item>JPEG</item>
+    </string-array>
+    <string-array name="photo_format_values">
+        <item>webp</item><item>jpeg</item>
     </string-array>
     <string-array name="battery_labels">
         <item>Any level</item><item>10% (or charging)</item><item>20% (or charging)</item><item>30% (or charging)</item><item>50% (or charging)</item><item>80% (or charging)</item>

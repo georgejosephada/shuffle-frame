@@ -34,9 +34,18 @@ object Store {
     private val broken = HashSet<String>()
     /** Items the user chose to hide on this tablet only. */
     private val hidden = HashSet<String>()
-    /** Videos stored in original quality that Google also offers in a smaller Full HD version. */
-    private val originals = HashSet<String>()
-    private var originalsTracked = false
+    /** How each stored video was made: [VideoVariant]. */
+    private val videoVariants = HashMap<String, VideoVariant>()
+    /** Videos already stored the way [videoPolicy] wants; anything else gets converted or re-fetched. */
+    private val videoDone = HashSet<String>()
+    private var videoPolicy = ""
+    /** Photo format of the last complete conversion pass; new downloads already use the current one. */
+    private var photoFormatDoneLoaded = ""
+    var photoFormatDone: String
+        @Synchronized get() = photoFormatDoneLoaded
+        @Synchronized set(value) { photoFormatDoneLoaded = value; save() }
+    /** Legacy record (before variants): videos known to be stored as originals. */
+    private val legacyOriginals = HashSet<String>()
     /** state.json couldn't be read this run: keep every file until the album list is restored. */
     private var loadFailed = false
 
@@ -57,15 +66,17 @@ object Store {
         coverDir = File(root, "covers").apply { mkdirs() }
         mediaDir.listFiles { f -> f.name.endsWith(".part") }?.forEach { it.delete() }
         load()
-        if (!originalsTracked) {
-            // Videos downloaded before quality tracking existed are originals (unless already transcoded).
-            items.values.forEach { m ->
-                m.values.filter { it.type == MediaType.VIDEO && it.key !in transcoded && mediaFile(it.key, it.type).exists() }
-                    .forEach { originals.add(it.key) }
-            }
-            originalsTracked = true
-            save()
+        // Classify videos stored before variants were recorded: the old "originals" list holds the
+        // originals; every other stored video came from Google's smaller version.
+        var migrated = false
+        items.values.forEach { m ->
+            m.values.filter { it.type == MediaType.VIDEO && it.key !in videoVariants && mediaFile(it.key, it.type).exists() }
+                .forEach {
+                    videoVariants[it.key] = if (it.key in legacyOriginals) VideoVariant.ORIGINAL else VideoVariant.GOOGLE
+                    migrated = true
+                }
         }
+        if (migrated) save()
     }
 
     fun mediaFile(key: String, type: MediaType) =
@@ -152,17 +163,43 @@ object Store {
         return fresh.values.filter { it.missCount == 0 && !mediaFile(it.key, it.type).exists() }
     }
 
-    /** Records which quality a video was stored in; [shrinkable] means a smaller version exists. */
     @Synchronized
-    fun setOriginal(key: String, shrinkable: Boolean) {
-        if (shrinkable) originals.add(key) else originals.remove(key)
-        save()
+    fun videoVariant(key: String): VideoVariant? = videoVariants[key]
+
+    /** Records how the video file now on disk was made, and that it suits [policy]. */
+    @Synchronized
+    fun videoStored(key: String, variant: VideoVariant, policy: String) {
+        videoVariants[key] = variant
+        if (policy == videoPolicy) videoDone.add(key)
+        save(); bump()
     }
 
-    /** Stored original-quality videos that could be replaced by Google's Full HD version, biggest first. */
+    /**
+     * Videos (listed, not removed) that aren't yet stored the way [policy] wants: missing ones
+     * first so new videos appear soon, then the biggest stored files.
+     */
     @Synchronized
-    fun shrinkQueue(): List<Item> = originals.mapNotNull { k -> items.values.firstNotNullOfOrNull { it[k] } }
-        .sortedByDescending { mediaFile(it.key, it.type).length() }
+    fun videosToProcess(policy: String): List<Item> {
+        if (policy != videoPolicy) {
+            videoPolicy = policy
+            videoDone.clear()
+            save()
+        }
+        val seen = HashSet<String>()
+        return items.values.asSequence().flatMap { it.values.asSequence() }
+            .filter { it.type == MediaType.VIDEO && it.missCount == 0 && it.key !in videoDone && it.key !in broken && seen.add(it.key) }
+            .sortedWith(compareBy<Item> { mediaFile(it.key, it.type).exists() }.thenByDescending { mediaFile(it.key, it.type).length() })
+            .toList()
+    }
+
+    /** Stored photos (each once) for the format conversion pass. */
+    @Synchronized
+    fun storedPhotos(): List<Item> {
+        val seen = HashSet<String>()
+        return items.values.asSequence().flatMap { it.values.asSequence() }
+            .filter { it.type == MediaType.PHOTO && it.missCount == 0 && seen.add(it.key) && mediaFile(it.key, it.type).exists() }
+            .toList()
+    }
 
     @Synchronized
     fun transcodeQueue(): List<Item> = needsTranscode.mapNotNull { k ->
@@ -172,7 +209,8 @@ object Store {
     @Synchronized
     fun markTranscoded(key: String) {
         needsTranscode.remove(key)
-        originals.remove(key)
+        videoVariants[key] = VideoVariant.GOOGLE
+        videoDone.add(key)
         transcoded.add(key)
         save(); bump()
     }
@@ -233,7 +271,8 @@ object Store {
         transcoded.remove(key)
         broken.remove(key)
         hidden.remove(key)
-        originals.remove(key)
+        videoVariants.remove(key)
+        videoDone.remove(key)
     }
 
     private fun stateFile() = AtomicFile(File(root, "state.json"))
@@ -266,8 +305,10 @@ object Store {
         o.put("transcoded", JSONArray(transcoded.toList()))
         o.put("broken", JSONArray(broken.toList()))
         o.put("hidden", JSONArray(hidden.toList()))
-        o.put("originals", JSONArray(originals.toList()))
-        o.put("originalsTracked", originalsTracked)
+        o.put("videoVariants", JSONObject().apply { videoVariants.forEach { (k, v) -> put(k, v.name) } })
+        o.put("videoDone", JSONArray(videoDone.toList()))
+        o.put("videoPolicy", videoPolicy)
+        o.put("photoFormatDone", photoFormatDoneLoaded)
         val file = stateFile()
         val out = file.startWrite()
         try {
@@ -304,8 +345,13 @@ object Store {
             o.optJSONArray("transcoded")?.strings()?.let(transcoded::addAll)
             o.optJSONArray("broken")?.strings()?.let(broken::addAll)
             o.optJSONArray("hidden")?.strings()?.let(hidden::addAll)
-            o.optJSONArray("originals")?.strings()?.let(originals::addAll)
-            originalsTracked = o.optBoolean("originalsTracked", false)
+            o.optJSONArray("originals")?.strings()?.let(legacyOriginals::addAll)
+            o.optJSONObject("videoVariants")?.let { v ->
+                for (k in v.keys()) runCatching { videoVariants[k] = VideoVariant.valueOf(v.getString(k)) }
+            }
+            o.optJSONArray("videoDone")?.strings()?.let(videoDone::addAll)
+            videoPolicy = o.optString("videoPolicy")
+            photoFormatDoneLoaded = o.optString("photoFormatDone")
         } catch (e: Exception) {
             android.util.Log.e("Store", "Could not read state; keeping it as state.json.bad", e)
             file.baseFile.renameTo(File(root, "state.json.bad"))

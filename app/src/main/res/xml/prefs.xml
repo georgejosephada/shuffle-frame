@@ -10,6 +10,9 @@
         <SwitchPreferenceCompat app:key="blur_background" app:title="Blurred background behind photos"
             app:summary="Fills the bars around photos that don't match the screen shape" app:defaultValue="true" app:iconSpaceReserved="false" />
         <SwitchPreferenceCompat app:key="ken_burns" app:title="Slow pan and zoom" app:defaultValue="true" app:iconSpaceReserved="false" />
+        <ListPreference app:key="photo_format" app:title="Photo format" app:defaultValue="webp"
+            app:entries="@array/photo_format_labels" app:entryValues="@array/photo_format_values"
+            app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
         <SwitchPreferenceCompat app:key="show_caption" app:title="Show date and album name" app:defaultValue="true" app:iconSpaceReserved="false" />
         <SwitchPreferenceCompat app:key="balance_albums" app:title="Equal time per album"
             app:summary="Off: every item equally likely. On: small albums show as often as big ones." app:defaultValue="false" app:iconSpaceReserved="false" />
@@ -17,7 +20,7 @@
     </PreferenceCategory>
     <PreferenceCategory app:title="Videos" app:iconSpaceReserved="false">
         <SwitchPreferenceCompat app:key="include_videos" app:title="Include videos" app:defaultValue="true" app:iconSpaceReserved="false" />
-        <ListPreference app:key="video_quality" app:title="Video quality" app:defaultValue="hd"
+        <ListPreference app:key="video_quality" app:title="Video quality" app:defaultValue="convert"
             app:entries="@array/video_quality_labels" app:entryValues="@array/video_quality_values"
             app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
         <SwitchPreferenceCompat app:key="mute_videos" app:title="Mute videos" app:defaultValue="true" app:iconSpaceReserved="false" />

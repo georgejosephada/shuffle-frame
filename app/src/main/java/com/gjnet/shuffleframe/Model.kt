@@ -4,6 +4,16 @@ import java.io.File
 
 enum class MediaType { PHOTO, VIDEO }
 
+/** How a stored video file was made. */
+enum class VideoVariant {
+    /** Google's original upload, untouched. */
+    ORIGINAL,
+    /** Google's own 1080p/720p H.264 rendition (compact, lower quality). */
+    GOOGLE,
+    /** Converted on the tablet from the original: HEVC, short side at most 1080. */
+    CONVERTED,
+}
+
 data class Album(
     val key: String,
     val authKey: String,
