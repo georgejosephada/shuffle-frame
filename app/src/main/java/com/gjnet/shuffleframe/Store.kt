@@ -44,6 +44,10 @@ object Store {
     var photoFormatDone: String
         @Synchronized get() = photoFormatDoneLoaded
         @Synchronized set(value) { photoFormatDoneLoaded = value; save() }
+    /** Video the slideshow is playing right now; its file isn't replaced until it moves on. */
+    @Volatile var nowPlaying: String? = null
+    /** Failed conversion attempts per video (kept in memory: retried a few times per app run). */
+    private val conversionFailures = HashMap<String, Int>()
     /** Legacy record (before variants): videos known to be stored as originals. */
     private val legacyOriginals = HashSet<String>()
     /** state.json couldn't be read this run: keep every file until the album list is restored. */
@@ -166,13 +170,26 @@ object Store {
     @Synchronized
     fun videoVariant(key: String): VideoVariant? = videoVariants[key]
 
-    /** Records how the video file now on disk was made, and that it suits [policy]. */
+    /**
+     * Records how the video file now on disk was made, and that it suits [policy]. Returns false
+     * (recording nothing) when no album lists the video any more; the caller then deletes the file.
+     */
     @Synchronized
-    fun videoStored(key: String, variant: VideoVariant, policy: String) {
+    fun videoStored(key: String, variant: VideoVariant, policy: String): Boolean {
+        if (!isReferenced(key)) return false
         videoVariants[key] = variant
         if (policy == videoPolicy) videoDone.add(key)
         save(); bump()
+        return true
     }
+
+    /** Videos that only played after Google's H.264 version was fetched: leave them as they are. */
+    @Synchronized
+    fun wasRescued(key: String) = key in transcoded || key in needsTranscode
+
+    /** Counts a failed conversion; returns how many there have been for this video. */
+    @Synchronized
+    fun conversionFailed(key: String): Int = (conversionFailures[key] ?: 0).plus(1).also { conversionFailures[key] = it }
 
     /**
      * Videos (listed, not removed) that aren't yet stored the way [policy] wants: missing ones
@@ -187,16 +204,20 @@ object Store {
         }
         val seen = HashSet<String>()
         return items.values.asSequence().flatMap { it.values.asSequence() }
-            .filter { it.type == MediaType.VIDEO && it.missCount == 0 && it.key !in videoDone && it.key !in broken && seen.add(it.key) }
+            .filter {
+                it.type == MediaType.VIDEO && it.missCount == 0 && it.key !in broken && seen.add(it.key) &&
+                    // "Done" only counts while the file is there (it may have been removed and re-added).
+                    !(it.key in videoDone && mediaFile(it.key, it.type).exists())
+            }
             .sortedWith(compareBy<Item> { mediaFile(it.key, it.type).exists() }.thenByDescending { mediaFile(it.key, it.type).length() })
             .toList()
     }
 
-    /** Stored photos (each once) for the format conversion pass. */
+    /** Stored photos of enabled albums (each once) for the format conversion pass. */
     @Synchronized
     fun storedPhotos(): List<Item> {
         val seen = HashSet<String>()
-        return items.values.asSequence().flatMap { it.values.asSequence() }
+        return albums.values.asSequence().filter { it.enabled }.flatMap { items[it.key]?.values.orEmpty().asSequence() }
             .filter { it.type == MediaType.PHOTO && it.missCount == 0 && seen.add(it.key) && mediaFile(it.key, it.type).exists() }
             .toList()
     }

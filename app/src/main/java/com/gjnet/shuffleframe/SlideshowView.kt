@@ -241,6 +241,7 @@ class SlideshowView(context: Context) : FrameLayout(context) {
 
     fun stop() {
         running = false
+        Store.nowPlaying = null
         job?.cancel(); job = null
         watchJob?.cancel(); watchJob = null
         staleJob?.cancel(); staleJob = null
@@ -346,6 +347,7 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         val p = player ?: return
         firstFrame = false
         videoError = false
+        Store.nowPlaying = item.key
         p.setMediaItem(MediaItem.fromUri(Uri.fromFile(item.file)))
         p.volume = if (prefs.muteVideos) 0f else 1f
         p.repeatMode = Player.REPEAT_MODE_OFF
@@ -386,6 +388,7 @@ class SlideshowView(context: Context) : FrameLayout(context) {
     }
 
     private fun hideVideo() {
+        Store.nowPlaying = null
         playerView.animate().cancel()
         if (playerView.alpha == 0f) {
             player?.stop()

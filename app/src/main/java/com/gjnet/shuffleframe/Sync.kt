@@ -6,6 +6,8 @@ import android.os.StatFs
 import android.view.Display
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
+import androidx.media3.transformer.ExportException
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
@@ -35,8 +37,13 @@ object Sync {
     private const val PARALLEL_DOWNLOADS = 6
     /** Downloads stop when free space falls below this. */
     private const val MIN_FREE_BYTES = 5L shl 30
-    /** Room needed to hold one original video (up to a few GB) while it's converted. */
-    private const val VIDEO_MIN_FREE_BYTES = 4L shl 30
+    /** Extra room kept free while fetching originals to convert, on top of [MIN_FREE_BYTES]. */
+    private const val VIDEO_MIN_FREE_BYTES = 2L shl 30
+    /** Conversion errors that retrying won't fix. */
+    private val PERMANENT_EXPORT_ERRORS = setOf(
+        ExportException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+        ExportException.ERROR_CODE_ENCODING_FORMAT_UNSUPPORTED,
+    )
     private val mutex = Mutex()
 
     /**
@@ -61,7 +68,10 @@ object Sync {
                     val photoFormat = if (prefs.photoWebp) "webp" else "jpeg"
                     if (queue.size > 20 || videos.isNotEmpty() || Store.photoFormatDone != photoFormat) onHeavyWork()
                     // Low on space: converting stored videos frees space, so do that first.
-                    if (lowOnSpace(ctx)) processVideos(ctx, Store.videosToProcess(policy).filter { Store.mediaFile(it.key, it.type).exists() }, policy)
+                    if (lowOnSpace(ctx) && policy == Prefs.VIDEO_CONVERT) {
+                        processVideos(ctx, Store.videosToProcess(policy).filter { Store.videoVariant(it.key) == VideoVariant.ORIGINAL &&
+                            Store.mediaFile(it.key, it.type).exists() }, policy)
+                    }
                     downloadAll(ctx, queue, failedDownloads, outOfSpace)
                     for (a in albums) {
                         if (listingErrors.containsKey(a.key)) continue
@@ -211,6 +221,9 @@ object Sync {
                         }
                     } catch (e: CancellationException) {
                         throw e
+                    } catch (e: GooglePhotos.HttpStatusException) {
+                        // Gone from Google (403/404): the next listing removes it; don't hold up completion.
+                        if (e.code != 403 && e.code != 404) failed.incrementAndGet()
                     } catch (e: Exception) {
                         failed.incrementAndGet()
                     }
@@ -223,18 +236,18 @@ object Sync {
         if (failed.get() == 0) Store.photoFormatDone = format
     }
 
-    private fun isWebp(f: java.io.File): Boolean {
+    private fun isWebp(f: File): Boolean {
         val head = ByteArray(12)
         val n = runCatching { f.inputStream().use { it.read(head) } }.getOrDefault(0)
         return n == 12 && String(head, 0, 4, Charsets.US_ASCII) == "RIFF" && String(head, 8, 4, Charsets.US_ASCII) == "WEBP"
     }
 
     /** An original ready for [processVideos]; [temporary] when it was downloaded just for this. */
-    private class Prepared(val item: Item, val file: java.io.File, val temporary: Boolean)
+    private class Prepared(val item: Item, val file: File, val temporary: Boolean)
 
     /**
      * Stores each video the way [policy] wants. In "convert" mode the original is fetched (unless
-     * it's already stored) and converted on the tablet, while the next original downloads.
+     * it's already stored) and converted on the tablet, while at most one more original downloads.
      */
     private suspend fun processVideos(ctx: Context, queue: List<Item>, policy: String) {
         if (queue.isEmpty()) return
@@ -245,14 +258,20 @@ object Sync {
             else -> "Fetching original videos"
         }
         coroutineScope {
-            val ready = Channel<Prepared>(capacity = 1)
+            // Rendezvous: the next original downloads only while the current one converts.
+            val ready = Channel<Prepared>(Channel.RENDEZVOUS)
             launch {
                 try {
                     for (item in queue) {
                         coroutineContext.ensureActive()
                         if (!Store.isTracked(item.key)) continue
-                        if (StatFs(ctx.filesDir.path).availableBytes < VIDEO_MIN_FREE_BYTES) break
-                        val p = runCatching { prepare(ctx, item, policy) }.getOrNull() ?: continue
+                        val p = try {
+                            prepare(ctx, item, policy)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            null  // left for the next sync
+                        } ?: continue
                         ready.send(p)
                     }
                 } finally {
@@ -275,34 +294,54 @@ object Sync {
         }
     }
 
-    /** Makes sure the source this video needs is on disk; null when nothing more is needed. */
+    private fun freeBytes(ctx: Context) = StatFs(ctx.filesDir.path).availableBytes
+
+    /** Generous guess at an original's size (iPhone 4K60 HEVC is ~6 MB/s) before downloading it. */
+    private fun originalEstimate(item: Item) = (item.durationMs / 1000 * (12L shl 20)).coerceIn(200L shl 20, 8L shl 30)
+
+    /** Makes sure the source this video needs is on disk; null when nothing (more) is needed now. */
     private suspend fun prepare(ctx: Context, item: Item, policy: String): Prepared? {
         val stored = Store.mediaFile(item.key, MediaType.VIDEO)
         val variant = if (stored.exists()) Store.videoVariant(item.key) else null
+        // Downloads must leave room for new photos and for the conversion itself.
+        fun roomFor(bytes: Long) = freeBytes(ctx) > MIN_FREE_BYTES + VIDEO_MIN_FREE_BYTES + bytes
         return when (policy) {
-            Prefs.VIDEO_CONVERT -> when (variant) {
-                VideoVariant.CONVERTED -> { Store.videoStored(item.key, variant, policy); null }
-                VideoVariant.ORIGINAL -> Prepared(item, stored, temporary = false)
-                else -> {
-                    val tmp = java.io.File(ctx.cacheDir, "original-${item.key}.mp4")
+            Prefs.VIDEO_CONVERT -> when {
+                variant == VideoVariant.CONVERTED -> { Store.videoStored(item.key, variant, policy); null }
+                // Only Google's version played on this tablet: keep it.
+                variant != null && Store.wasRescued(item.key) -> { Store.videoStored(item.key, variant, policy); null }
+                variant == VideoVariant.ORIGINAL ->
+                    // Converting a stored original frees space; it needs room only for the smaller output.
+                    if (freeBytes(ctx) > (1L shl 30) + stored.length() / 2) Prepared(item, stored, temporary = false) else null
+                roomFor(originalEstimate(item)) -> {
+                    val tmp = File(ctx.cacheDir, "original-${item.key}.mp4")
                     GooglePhotos.download(item.baseUrl + "=dv", tmp)
                     Prepared(item, tmp, temporary = true)
                 }
+                else -> null
             }
-            Prefs.VIDEO_ORIGINAL -> if (variant == VideoVariant.ORIGINAL) { Store.videoStored(item.key, variant, policy); null }
-            else {
-                GooglePhotos.download(item.baseUrl + "=dv", stored)
-                Store.videoStored(item.key, VideoVariant.ORIGINAL, policy)
+            Prefs.VIDEO_ORIGINAL -> {
+                if (variant == VideoVariant.ORIGINAL) Store.videoStored(item.key, variant, policy)
+                else if (roomFor(originalEstimate(item))) {
+                    val tmp = File(ctx.cacheDir, "original-${item.key}.mp4")
+                    GooglePhotos.download(item.baseUrl + "=dv", tmp)
+                    place(tmp, stored, item.key)
+                    if (!Store.videoStored(item.key, VideoVariant.ORIGINAL, policy)) stored.delete()
+                }
                 null
             }
             else -> {  // Google's compact version, unless what's stored is already 1080p or smaller
                 val small = variant == VideoVariant.GOOGLE || variant == VideoVariant.CONVERTED ||
                     (variant == VideoVariant.ORIGINAL && (VideoConverter.probe(stored)?.shortSide ?: Int.MAX_VALUE) <= 1080)
                 if (small) { Store.videoStored(item.key, variant!!, policy); return null }
-                if (downloadSmallerVideo(item, stored)) Store.videoStored(item.key, VideoVariant.GOOGLE, policy)
-                else {
-                    GooglePhotos.download(item.baseUrl + "=dv", stored)
-                    Store.videoStored(item.key, VideoVariant.ORIGINAL, policy)
+                val tmp = File(ctx.cacheDir, "compact-${item.key}.mp4")
+                try {
+                    val made = if (downloadSmallerVideo(item, tmp)) VideoVariant.GOOGLE
+                    else { GooglePhotos.download(item.baseUrl + "=dv", tmp); VideoVariant.ORIGINAL }
+                    place(tmp, stored, item.key)
+                    if (!Store.videoStored(item.key, made, policy)) stored.delete()
+                } finally {
+                    tmp.delete()
                 }
                 null
             }
@@ -313,37 +352,81 @@ object Sync {
     private suspend fun finish(ctx: Context, p: Prepared, policy: String) {
         val key = p.item.key
         val dest = Store.mediaFile(key, MediaType.VIDEO)
-        val probe = VideoConverter.probe(p.file)
-        val converted = try {
-            probe != null && !VideoConverter.keepAsIs(probe) && VideoConverter.convert(ctx, p.file, dest, probe)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // The tablet can't convert this one (e.g. an unusual codec): use Google's 1080p version.
-            if (downloadSmallerVideo(p.item, dest)) {
-                Store.videoStored(key, VideoVariant.GOOGLE, policy)
-                if (!Store.isTracked(key)) dest.delete()
+        val staging = File(ctx.cacheDir, "converted-$key.mp4")
+        try {
+            val probe = VideoConverter.probe(p.file)
+            val converted = try {
+                probe != null && !VideoConverter.keepAsIs(probe) && VideoConverter.convert(ctx, p.file, staging, probe)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Retry transient failures on later syncs; give up only on unsupported formats or repeats.
+                val permanent = e is ExportException && e.errorCode in PERMANENT_EXPORT_ERRORS
+                if (!permanent && Store.conversionFailed(key) < 3) throw e
+                fallBack(ctx, p, policy)
                 return
             }
-            false
-        }
-        when {
-            converted -> Store.videoStored(key, VideoVariant.CONVERTED, policy)
-            p.temporary -> {
-                // Keeping the original: move the downloaded copy into place.
-                if (!p.file.renameTo(dest)) p.file.copyTo(dest, overwrite = true)
-                Store.videoStored(key, VideoVariant.ORIGINAL, policy)
+            when {
+                converted -> {
+                    place(staging, dest, key)
+                    if (!Store.videoStored(key, VideoVariant.CONVERTED, policy)) dest.delete()
+                }
+                p.temporary -> {
+                    // Keeping the original (already efficient, or conversion wouldn't help).
+                    place(p.file, dest, key)
+                    if (!Store.videoStored(key, VideoVariant.ORIGINAL, policy)) dest.delete()
+                }
+                else -> Store.videoStored(key, VideoVariant.ORIGINAL, policy)
             }
-            else -> Store.videoStored(key, VideoVariant.ORIGINAL, policy)
+        } finally {
+            staging.delete()
         }
-        if (!Store.isTracked(key)) dest.delete()
+    }
+
+    /** The tablet can't convert this video: keep what's stored, or else use Google's 1080p version. */
+    private fun fallBack(ctx: Context, p: Prepared, policy: String) {
+        val key = p.item.key
+        val dest = Store.mediaFile(key, MediaType.VIDEO)
+        val existing = if (dest.exists()) Store.videoVariant(key) else null
+        if (existing != null) {
+            Store.videoStored(key, existing, policy)
+            return
+        }
+        val tmp = File(ctx.cacheDir, "compact-$key.mp4")
+        try {
+            if (downloadSmallerVideo(p.item, tmp)) {
+                place(tmp, dest, key)
+                if (!Store.videoStored(key, VideoVariant.GOOGLE, policy)) dest.delete()
+            } else {
+                place(p.file, dest, key)
+                if (!Store.videoStored(key, VideoVariant.ORIGINAL, policy)) dest.delete()
+            }
+        } finally {
+            tmp.delete()
+        }
+    }
+
+    /**
+     * Moves a finished file over the stored one, waiting (up to 30 minutes) while the slideshow is
+     * playing that video, so its player never sees the file change underneath it.
+     */
+    private fun place(src: File, dest: File, key: String) {
+        var waited = 0
+        while (Store.nowPlaying == key && waited < 1800) {
+            Thread.sleep(1000)
+            waited++
+        }
+        if (!src.renameTo(dest)) {
+            src.copyTo(dest, overwrite = true)
+            src.delete()
+        }
     }
 
     /**
      * Fetches Google's 1080p (or 720p) H.264 version. Returns false when Google has none (404);
      * other failures throw so the item is retried next sync.
      */
-    private fun downloadSmallerVideo(item: Item, dest: java.io.File): Boolean {
+    private fun downloadSmallerVideo(item: Item, dest: File): Boolean {
         for (suffix in listOf("=m37", "=m22")) {
             try {
                 GooglePhotos.download(item.baseUrl + suffix, dest)
