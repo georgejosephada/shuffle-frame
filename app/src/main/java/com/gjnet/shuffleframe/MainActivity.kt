@@ -93,6 +93,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        resumed = true
         // Being in the app unlocked means the user is here; Android may also resume this
         // screen behind the lock screen after a frame closes, which must not count.
         val locked = getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked
@@ -128,6 +129,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)  // onResume reads it (e.g. the "update ready" notification's extra)
         handleIntent(intent, launched = false)
     }
 
@@ -238,7 +240,15 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    override fun onPause() {
+        resumed = false
+        super.onPause()
+    }
+
     companion object {
+        /** Whether the album screen is in front (main thread). */
+        @Volatile var resumed = false
+            private set
         /** Set when returning from the slideshow, so auto-start doesn't bounce straight back. */
         const val EXTRA_NO_AUTOSTART = "no_autostart"
     }

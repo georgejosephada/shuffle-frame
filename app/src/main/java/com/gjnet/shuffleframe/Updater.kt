@@ -42,6 +42,7 @@ object Updater {
     private const val KEY_STATUS = "update_status"
     const val KEY_RESUME_FRAME = "resume_frame_after_update"
     private const val KEY_LAST_AUTO_INSTALL = "update_last_auto_install"
+    private const val KEY_LAST_AUTO_VERSION = "update_last_auto_version"
     /** Opening the app retries a dismissed install at most this often. */
     private const val AUTO_INSTALL_INTERVAL_MS = 12 * 60 * 60 * 1000L
     const val EXTRA_INSTALL = "install_update"
@@ -61,7 +62,7 @@ object Updater {
     fun checkNow(ctx: Context) {
         val req = OneTimeWorkRequestBuilder<UpdateWorker>()
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-            .setInputData(androidx.work.workDataOf(UpdateWorker.KEY_INSTALL to true))
+            .setInputData(androidx.work.workDataOf(UpdateWorker.KEY_INSTALL to System.currentTimeMillis()))
             .build()
         WorkManager.getInstance(ctx).enqueueUniqueWork("update-now", ExistingWorkPolicy.KEEP, req)
     }
@@ -149,15 +150,19 @@ object Updater {
      * dismissed install at most every 12 hours; the notification and Settings always try.
      */
     fun installPending(ctx: Context, automatic: Boolean = false): Boolean {
-        pendingVersion(ctx) ?: return false
+        val version = pendingVersion(ctx) ?: return false
         val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
         val now = System.currentTimeMillis()
-        if (automatic && now - prefs.getLong(KEY_LAST_AUTO_INSTALL, 0) < AUTO_INSTALL_INTERVAL_MS) return false
+        // Only a retry of the same version waits; a newer download installs on the next open.
+        if (automatic && prefs.getLong(KEY_LAST_AUTO_VERSION, 0) == version &&
+            now - prefs.getLong(KEY_LAST_AUTO_INSTALL, 0) < AUTO_INSTALL_INTERVAL_MS
+        ) return false
         if (!ctx.packageManager.canRequestPackageInstalls()) {
             setStatus(ctx, ctx.getString(R.string.update_needs_permission, ""))
             return false
         }
-        prefs.edit().putLong(KEY_LAST_AUTO_INSTALL, now).putBoolean(KEY_RESUME_FRAME, SlideshowActivity.visible > 0).commit()
+        prefs.edit().putLong(KEY_LAST_AUTO_INSTALL, now).putLong(KEY_LAST_AUTO_VERSION, version)
+            .putBoolean(KEY_RESUME_FRAME, SlideshowActivity.visible > 0).commit()
         ctx.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
         setStatus(ctx, ctx.getString(R.string.update_installing, ""))
         return try {
@@ -239,6 +244,9 @@ object Updater {
     }
 
     fun onResult(ctx: Context, status: Int, message: String?) {
+        if (status != PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            ctx.getSystemService(NotificationManager::class.java).cancel(NOTIFICATION_ID)
+        }
         when (status) {
             // Normally the old process is gone by now; the new one reports its version in Settings.
             PackageInstaller.STATUS_SUCCESS -> PreferenceManager.getDefaultSharedPreferences(ctx).edit().remove(KEY_STATUS).apply()
@@ -261,7 +269,14 @@ class UpdateWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx
 
     override suspend fun doWork(): Result {
         try {
-            Updater.run(applicationContext, installNow = inputData.getBoolean(KEY_INSTALL, false))
+            // "Check now" installs at once only if it runs promptly while the user is still there
+            // (if the tablet was offline, it may run much later): otherwise it just downloads.
+            val requestedAt = inputData.getLong(KEY_INSTALL, 0)
+            val ctx = applicationContext
+            val present = ctx.getSystemService(android.os.PowerManager::class.java).isInteractive &&
+                !ctx.getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked
+            val prompt = requestedAt > 0 && System.currentTimeMillis() - requestedAt < 2 * 60_000 && present
+            Updater.run(ctx, installNow = prompt)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             // Shown in Settings; tried again at the next daily check.
@@ -278,10 +293,12 @@ class InstallResultReceiver : BroadcastReceiver() {
             @Suppress("DEPRECATION")
             val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
             if (confirm != null) {
-                // Installs start while the user is in the app, so show the confirmation right away;
-                // if Android doesn't allow that, a notification offers it instead.
-                val shown = runCatching { context.startActivity(Intent(confirm).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
-                if (!shown) Updater.notifyConfirm(context, confirm)
+                // Always offer it as a notification (a blocked launch fails silently), and show it
+                // at once when the user is looking at the app.
+                Updater.notifyConfirm(context, confirm)
+                if (MainActivity.resumed || SlideshowActivity.visible > 0) {
+                    runCatching { context.startActivity(Intent(confirm).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                }
             }
         }
         Updater.onResult(context, status, intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE))
