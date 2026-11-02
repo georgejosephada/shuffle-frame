@@ -19,6 +19,8 @@ object Store {
      * treated as suspect: the items are hidden but only deleted if the next sync agrees.
      */
     private const val MASS_REMOVAL_MIN = 10
+    /** Raised when the rules for how videos are stored change, so they're checked again. */
+    private const val VIDEO_RULES = 2
 
     private lateinit var root: File
     private lateinit var mediaDir: File
@@ -329,6 +331,7 @@ object Store {
         o.put("videoVariants", JSONObject().apply { videoVariants.forEach { (k, v) -> put(k, v.name) } })
         o.put("videoDone", JSONArray(videoDone.toList()))
         o.put("videoPolicy", videoPolicy)
+        o.put("videoRules", VIDEO_RULES)
         o.put("photoFormatDone", photoFormatDoneLoaded)
         val file = stateFile()
         val out = file.startWrite()
@@ -370,8 +373,10 @@ object Store {
             o.optJSONObject("videoVariants")?.let { v ->
                 for (k in v.keys()) runCatching { videoVariants[k] = VideoVariant.valueOf(v.getString(k)) }
             }
-            o.optJSONArray("videoDone")?.strings()?.let(videoDone::addAll)
             videoPolicy = o.optString("videoPolicy")
+            // Google mode used to keep the tablet's own 1080p conversions: check those videos again.
+            val recheck = o.optInt("videoRules", 1) < VIDEO_RULES && videoPolicy == Prefs.VIDEO_GOOGLE
+            if (!recheck) o.optJSONArray("videoDone")?.strings()?.let(videoDone::addAll)
             photoFormatDoneLoaded = o.optString("photoFormatDone")
         } catch (e: Exception) {
             android.util.Log.e("Store", "Could not read state; keeping it as state.json.bad", e)

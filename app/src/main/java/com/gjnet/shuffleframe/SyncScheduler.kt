@@ -18,6 +18,7 @@ object SyncScheduler {
     private const val NOW = "sync-now"
     private const val ALBUM = "sync-album"
     private const val FOLLOW_UP = "sync-follow-up"
+    private const val CHARGING = "sync-on-charger"
 
     /**
      * Syncs again shortly, queued behind any running sync so it lists albums afresh; used after
@@ -29,6 +30,21 @@ object SyncScheduler {
             .setConstraints(constraints(ctx, userInitiated = true))
             .build()
         WorkManager.getInstance(ctx).enqueueUniqueWork(FOLLOW_UP, ExistingWorkPolicy.APPEND_OR_REPLACE, req)
+    }
+
+    /** Syncs (converting the videos left waiting) once the tablet is next on the charger. */
+    fun syncWhenCharging(ctx: Context) {
+        val req = OneTimeWorkRequestBuilder<SyncWorker>()
+            .setConstraints(constraints(ctx, userInitiated = false).let { Constraints.Builder(it).setRequiresCharging(true).build() })
+            .build()
+        val wm = WorkManager.getInstance(ctx)
+        val infos = wm.getWorkInfosForUniqueWork(CHARGING)
+        infos.addListener({
+            val states = runCatching { infos.get() }.getOrDefault(emptyList()).map { it.state }
+            // One waiting is enough; behind a running one (unplugged mid-way), queue the next.
+            if (states.none { it == WorkInfo.State.ENQUEUED || it == WorkInfo.State.BLOCKED })
+                wm.enqueueUniqueWork(CHARGING, ExistingWorkPolicy.APPEND_OR_REPLACE, req)
+        }, Executors.newSingleThreadExecutor())
     }
 
     /** Explicit user actions may use any network; automatic syncs respect "Wi-Fi only". */

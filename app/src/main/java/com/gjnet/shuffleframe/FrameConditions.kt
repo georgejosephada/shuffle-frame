@@ -9,6 +9,11 @@ import android.provider.Settings
 
 /** The user's rules for when the slideshow may start (and keep running) by itself. */
 object FrameConditions {
+    /** Whether the tablet is on a charger (even when full and no longer charging). */
+    fun pluggedIn(ctx: Context): Boolean =
+        ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            ?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0)?.let { it != 0 } ?: false
+
     fun allowed(ctx: Context): Boolean {
         val prefs = Prefs(ctx)
         // The sticky battery broadcast is the system's own view of level and power source.

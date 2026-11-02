@@ -112,6 +112,8 @@ class SettingsActivity : AppCompatActivity() {
 
         override fun onSharedPreferenceChanged(sp: SharedPreferences?, key: String?) {
             if (key == "sync_interval" || key == "wifi_only") SyncScheduler.schedule(requireContext(), update = true)
+            // Stored files change to match these: start on it rather than wait for the next sync.
+            if (key == "video_quality" || key == "photo_format" || key == "convert_only_charging") SyncScheduler.syncNow(requireContext())
             if (key == "frame_mode") FrameService.sync(requireContext())
             if (key == "update_status") findPreference<Preference>("check_updates")?.summary = Updater.status(requireContext())
         }

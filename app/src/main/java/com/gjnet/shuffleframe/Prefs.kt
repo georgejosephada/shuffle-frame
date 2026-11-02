@@ -38,6 +38,8 @@ class Prefs(ctx: Context) {
     var videoVolume: Int
         get() = sp.getInt("video_volume", 0).coerceIn(0, 100)
         set(v) = sp.edit().putInt("video_volume", v.coerceIn(0, 100)).apply()
+    /** Convert mode: convert videos only while on the charger. */
+    val convertOnlyCharging get() = sp.getBoolean("convert_only_charging", true)
     val maxVideoSeconds get() = int("max_video_seconds", 0)
     /** "convert" (1080p HEVC made on the tablet), "google" (Google's compact 1080p) or "original". */
     val videoQuality: String get() = sp.getString("video_quality", VIDEO_CONVERT) ?: VIDEO_CONVERT

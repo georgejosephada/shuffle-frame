@@ -56,6 +56,7 @@ object Sync {
                 val listingErrors = ConcurrentHashMap<String, String>()
                 val failedDownloads = ConcurrentHashMap<String, AtomicInteger>()
                 val outOfSpace = AtomicBoolean(false)
+                val waitingForCharger = AtomicBoolean(false)
                 var finished = false
                 try {
                     clearLeftovers(ctx)
@@ -71,7 +72,7 @@ object Sync {
                     // Low on space: converting stored videos frees space, so do that first.
                     if (lowOnSpace(ctx) && policy == Prefs.VIDEO_CONVERT) {
                         processVideos(ctx, Store.videosToProcess(policy).filter { Store.videoVariant(it.key) == VideoVariant.ORIGINAL &&
-                            Store.mediaFile(it.key, it.type).exists() }, policy)
+                            Store.mediaFile(it.key, it.type).exists() }, policy, waitingForCharger)
                     }
                     downloadAll(ctx, queue, failedDownloads, outOfSpace)
                     for (a in albums) {
@@ -82,21 +83,23 @@ object Sync {
                         }
                     }
                     convertPhotos(ctx, photoFormat)
-                    processVideos(ctx, Store.videosToProcess(policy), policy)
+                    processVideos(ctx, Store.videosToProcess(policy), policy, waitingForCharger)
+                    if (waitingForCharger.get()) SyncScheduler.syncWhenCharging(ctx)
                     transcodeFailedVideos()
                     Store.sweepOrphans()
                     finished = true
                 } finally {
                     val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
                     val problems = listingErrors.size + failedDownloads.count { it.value.get() > 0 }
+                    val message = when {
+                        !finished -> "Sync paused at $time; it continues next time"
+                        outOfSpace.get() -> "Storage almost full: downloads paused at $time"
+                        problems == 0 -> "Last synced at $time"
+                        else -> "Synced at $time with problems in $problems album(s)"
+                    }
                     Store.status.value = SyncStatus(
                         running = false,
-                        message = when {
-                            !finished -> "Sync paused at $time; it continues next time"
-                            outOfSpace.get() -> "Storage almost full: downloads paused at $time"
-                            problems == 0 -> "Last synced at $time"
-                            else -> "Synced at $time with problems in $problems album(s)"
-                        },
+                        message = if (finished && waitingForCharger.get()) "$message. Video conversion continues on the charger." else message,
                     )
                     Store.bump()
                 }
@@ -250,22 +253,28 @@ object Sync {
      * Stores each video the way [policy] wants. In "convert" mode the original is fetched (unless
      * it's already stored) and converted on the tablet, while at most one more original downloads.
      */
-    private suspend fun processVideos(ctx: Context, queue: List<Item>, policy: String) {
+    private suspend fun processVideos(ctx: Context, queue: List<Item>, policy: String, waitingForCharger: AtomicBoolean) {
         if (queue.isEmpty()) return
         val done = AtomicInteger()
         val label = when (policy) {
             Prefs.VIDEO_CONVERT -> "Converting videos to 1080p HEVC"
-            Prefs.VIDEO_GOOGLE -> "Fetching compact videos"
+            Prefs.VIDEO_GOOGLE -> "Switching videos to Google's compact version"
             else -> "Fetching original videos"
         }
+        // Converting is heavy work; by default it only runs on the charger.
+        val needsCharger = policy == Prefs.VIDEO_CONVERT && Prefs(ctx).convertOnlyCharging
+        fun unplugged() = (needsCharger && !FrameConditions.pluggedIn(ctx)).also { if (it) waitingForCharger.set(true) }
         coroutineScope {
             // Rendezvous: the next original downloads only while the current one converts.
             val ready = Channel<Prepared>(Channel.RENDEZVOUS)
             launch {
                 try {
-                    for (item in queue) {
+                    for ((i, item) in queue.withIndex()) {
                         coroutineContext.ensureActive()
+                        if (unplugged()) break
                         if (!Store.isTracked(item.key)) continue
+                        // Other modes do all their work here; convert mode reports from finish below.
+                        if (policy != Prefs.VIDEO_CONVERT) Store.status.value = SyncStatus(true, "$label: ${i + 1} of ${queue.size}…")
                         val p = try {
                             prepare(ctx, item, policy)
                         } catch (e: CancellationException) {
@@ -281,6 +290,7 @@ object Sync {
             }
             for (p in ready) {
                 try {
+                    if (unplugged()) continue
                     Store.status.value = SyncStatus(true, "$label: ${done.get() + 1} of ${queue.size}…")
                     finish(ctx, p, policy)
                 } catch (e: CancellationException) {
@@ -340,16 +350,25 @@ object Sync {
                 }
                 null
             }
-            else -> {  // Google's compact version, unless what's stored is already 1080p or smaller
-                val small = variant == VideoVariant.GOOGLE || variant == VideoVariant.CONVERTED ||
-                    (variant == VideoVariant.ORIGINAL && (VideoConverter.probe(stored)?.shortSide ?: Int.MAX_VALUE) <= 1080)
-                if (small) { Store.videoStored(item.key, variant!!, policy); return null }
+            else -> {  // Google's compact version, wherever it's smaller than what's stored
+                if (variant == VideoVariant.GOOGLE) { Store.videoStored(item.key, variant, policy); return null }
                 val tmp = File(ctx.cacheDir, "compact-${item.key}.mp4")
                 try {
-                    val made = if (downloadSmallerVideo(item, tmp)) VideoVariant.GOOGLE
-                    else { GooglePhotos.download(item.baseUrl + "=dv", tmp); VideoVariant.ORIGINAL }
-                    place(tmp, stored, item.key)
-                    if (!Store.videoStored(item.key, made, policy)) stored.delete()
+                    when {
+                        downloadSmallerVideo(item, tmp) ->
+                            if (variant != null && stored.length() <= tmp.length()) Store.videoStored(item.key, variant, policy)
+                            else {
+                                place(tmp, stored, item.key)
+                                if (!Store.videoStored(item.key, VideoVariant.GOOGLE, policy)) stored.delete()
+                            }
+                        // Google makes no compact version of small videos: keep what's stored.
+                        variant != null -> Store.videoStored(item.key, variant, policy)
+                        else -> {
+                            GooglePhotos.download(item.baseUrl + "=dv", tmp)
+                            place(tmp, stored, item.key)
+                            if (!Store.videoStored(item.key, VideoVariant.ORIGINAL, policy)) stored.delete()
+                        }
+                    }
                 } finally {
                     tmp.delete()
                 }

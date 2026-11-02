@@ -24,6 +24,9 @@
         <ListPreference app:key="video_quality" app:title="Video quality" app:defaultValue="convert"
             app:entries="@array/video_quality_labels" app:entryValues="@array/video_quality_values"
             app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="convert_only_charging" app:title="Convert only while charging"
+            app:summary="Converting is heavy work for the battery. New videos appear once they're converted."
+            app:defaultValue="true" app:iconSpaceReserved="false" />
         <SeekBarPreference app:key="video_volume" app:title="Video volume"
             app:summary="Share of the tablet's media volume, so videos can play quieter than music or radio. 0 = muted. Also adjustable on the slideshow's controls."
             app:min="0" android:max="100" app:seekBarIncrement="5" app:showSeekBarValue="true" app:updatesContinuously="true"
