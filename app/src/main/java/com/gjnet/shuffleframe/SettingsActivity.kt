@@ -16,10 +16,12 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.commit
+import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceManager
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,10 +79,36 @@ class SettingsActivity : AppCompatActivity() {
                 openBackup.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
                 true
             }
+            confirmQualityChange("video_quality", R.array.video_quality_lower, R.array.video_quality_higher)
+            confirmQualityChange("photo_format", R.array.photo_format_lower, R.array.photo_format_higher)
             findPreference<Preference>("check_updates")?.setOnPreferenceClickListener {
                 Updater.checkNow(requireContext())
                 it.summary = getString(R.string.update_checking)
                 true
+            }
+        }
+
+        /**
+         * Changing what's stored replaces files already on the tablet, so ask first: lower quality
+         * can only be undone by downloading everything again, higher quality costs space and data.
+         * The option lists run from lowest to highest quality; [lower] and [higher] hold, for each
+         * option, what moving down or up to it does.
+         */
+        private fun confirmQualityChange(key: String, lower: Int, higher: Int) {
+            val pref = findPreference<ListPreference>(key) ?: return
+            pref.setOnPreferenceChangeListener { _, value ->
+                val values = pref.entryValues.map { it.toString() }
+                val from = values.indexOf(pref.value)
+                val to = values.indexOf(value as String)
+                if (from < 0 || to < 0 || from == to) return@setOnPreferenceChangeListener true
+                val down = to < from
+                MaterialAlertDialogBuilder(requireContext())
+                    .setTitle(if (down) R.string.quality_lower_title else R.string.quality_higher_title)
+                    .setMessage(resources.getStringArray(if (down) lower else higher)[to])
+                    .setPositiveButton(R.string.quality_proceed) { _, _ -> pref.value = value }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+                false
             }
         }
 

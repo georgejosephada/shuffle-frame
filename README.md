@@ -13,10 +13,12 @@ Google Photos albums (photos and videos), kept in sync automatically.
 - Background sync (WorkManager, every 30 min by default, Wi-Fi only, plus whenever the slideshow
   starts) mirrors each enabled album into app storage. It lists every album first (4 at a time),
   then downloads new items 6 at a time, photos first. Photos are screen-sized WebP renders from
-  Google (about 40% smaller than JPEG; HEIC needs no on-device decoding). Videos above 1080p, and
-  H.264 videos, are converted on the tablet's hardware encoder to 1080p HEVC at ~12.5 Mbit/s with
-  HDR kept (Settings → Video quality: converted / Google compact / original). Existing files are
-  converted in the background. Downloads pause below 5 GB free.
+  Google (about 40% smaller than JPEG; HEIC needs no on-device decoding). Videos are Google's
+  1080p version by default (smallest). Settings → Video quality, from lowest to highest: Google's
+  1080p / 1080p HEVC converted on the tablet's hardware encoder (~12.5 Mbit/s, HDR kept, about 3×
+  Google's size; only while charging unless switched off) / originals. Changing photo or video
+  quality asks first, then replaces existing files in the background. Downloads pause below 5 GB
+  free.
 - Everything in a shared album is included, whoever added it; nobody needs to tap "Save".
 - **Deletions mirror**: an item removed from the album is deleted from the tablet on the next sync.
   Safety net: if one sync would remove more than half of an album (or the album lists as empty),

@@ -21,7 +21,7 @@
     </PreferenceCategory>
     <PreferenceCategory app:title="Videos" app:iconSpaceReserved="false">
         <SwitchPreferenceCompat app:key="include_videos" app:title="Include videos" app:defaultValue="true" app:iconSpaceReserved="false" />
-        <ListPreference app:key="video_quality" app:title="Video quality" app:defaultValue="convert"
+        <ListPreference app:key="video_quality" app:title="Video quality" app:defaultValue="google"
             app:entries="@array/video_quality_labels" app:entryValues="@array/video_quality_values"
             app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
         <SwitchPreferenceCompat app:key="convert_only_charging" app:title="Convert only while charging"

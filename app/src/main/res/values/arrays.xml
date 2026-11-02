@@ -19,16 +19,36 @@
     <string-array name="video_cap_values">
         <item>0</item><item>15</item><item>30</item><item>60</item><item>120</item>
     </string-array>
+    <!-- Quality options go from lowest to highest; the settings screen relies on that order. -->
     <string-array name="video_quality_labels">
-        <item>1080p HEVC, quality kept (converted on the tablet)</item>
-        <item>1080p compact (Google\'s version, smallest)</item>
-        <item>Original files</item>
+        <item>Google\'s 1080p version (smallest)</item>
+        <item>1080p HEVC converted on the tablet (better, about 3× larger)</item>
+        <item>Original files (best, largest)</item>
     </string-array>
     <string-array name="video_quality_values">
-        <item>convert</item><item>google</item><item>original</item>
+        <item>google</item><item>convert</item><item>original</item>
     </string-array>
     <string-array name="photo_format_labels">
-        <item>WebP (about 40% smaller)</item><item>JPEG</item>
+        <item>WebP (smallest)</item><item>JPEG (about 70% larger)</item>
+    </string-array>
+    <!-- What switching to each option does: moving down to it (quality loss) / up to it. -->
+    <string-array name="video_quality_lower">
+        <item>Videos on the tablet will be replaced by Google\'s 1080p version wherever it\'s smaller. They lose some sharpness, and getting it back later means downloading every video again.</item>
+        <item>Original videos on the tablet will be converted to 1080p HEVC. Videos above 1080p lose resolution and every converted video loses a little quality; getting the originals back later means downloading them all again.</item>
+        <item />
+    </string-array>
+    <string-array name="video_quality_higher">
+        <item />
+        <item>Each video\'s original will be downloaded again and converted on the tablet. This takes a long time, uses a lot of data and about 3× the space of Google\'s version.</item>
+        <item>Every video will be downloaded again as its original file. This uses a lot of data, and originals can take 5 to 10 times the space.</item>
+    </string-array>
+    <string-array name="photo_format_lower">
+        <item>Photos on the tablet will be replaced by Google\'s WebP version. It\'s compressed harder, so fine detail can soften slightly, and going back later means downloading every photo again.</item>
+        <item />
+    </string-array>
+    <string-array name="photo_format_higher">
+        <item />
+        <item>Every photo will be downloaded again as JPEG, using about 70% more space.</item>
     </string-array>
     <string-array name="photo_format_values">
         <item>webp</item><item>jpeg</item>

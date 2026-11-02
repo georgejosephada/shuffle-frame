@@ -11,10 +11,14 @@ class Prefs(ctx: Context) {
         val lists = mapOf(
             "photo_seconds" to (R.array.photo_seconds_values to "10"),
             "sync_interval" to (R.array.sync_values to "30"),
-            "video_quality" to (R.array.video_quality_values to VIDEO_CONVERT),
+            "video_quality" to (R.array.video_quality_values to VIDEO_GOOGLE),
             "photo_format" to (R.array.photo_format_values to "webp"),
         )
         val edit = sp.edit()
+        // The default became the lowest option; installs that relied on the old default keep it.
+        if (!sp.contains("prefs_version") && sp.all.isNotEmpty() && !sp.contains("video_quality"))
+            edit.putString("video_quality", VIDEO_CONVERT)
+        edit.putInt("prefs_version", 2)
         // "Mute videos" became a volume level; keep what was chosen.
         if (!sp.contains("video_volume")) edit.putInt("video_volume", if (sp.getBoolean("mute_videos", true)) 0 else 100)
         edit.remove("mute_videos")
@@ -41,8 +45,8 @@ class Prefs(ctx: Context) {
     /** Convert mode: convert videos only while on the charger. */
     val convertOnlyCharging get() = sp.getBoolean("convert_only_charging", true)
     val maxVideoSeconds get() = int("max_video_seconds", 0)
-    /** "convert" (1080p HEVC made on the tablet), "google" (Google's compact 1080p) or "original". */
-    val videoQuality: String get() = sp.getString("video_quality", VIDEO_CONVERT) ?: VIDEO_CONVERT
+    /** "google" (Google's compact 1080p), "convert" (1080p HEVC made on the tablet) or "original". */
+    val videoQuality: String get() = sp.getString("video_quality", VIDEO_GOOGLE) ?: VIDEO_GOOGLE
     /** Photos as Google's WebP render (smaller) or JPEG. */
     val photoWebp get() = sp.getString("photo_format", "webp") == "webp"
     val syncMinutes get() = int("sync_interval", 30)

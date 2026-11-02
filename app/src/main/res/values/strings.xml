@@ -72,6 +72,9 @@
     <string name="cd_next">Next</string>
     <string name="cd_pause">Pause</string>
     <string name="cd_close">Close</string>
+    <string name="quality_lower_title">Lower the quality?</string>
+    <string name="quality_higher_title">Raise the quality?</string>
+    <string name="quality_proceed">Proceed</string>
     <string name="cd_volume">Mute or unmute videos</string>
     <string name="cd_mute">Mute videos</string>
     <string name="cd_unmute">Unmute videos</string>
