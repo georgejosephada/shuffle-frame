@@ -83,6 +83,39 @@
             android:src="@drawable/ic_next" />
     </LinearLayout>
     <LinearLayout
+        android:id="@+id/volume_bar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="36dp"
+        android:background="@drawable/bg_panel"
+        android:clickable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingEnd="16dp">
+
+        <ImageButton
+            android:id="@+id/btn_volume"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/cd_volume"
+            android:padding="14dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_volume" />
+
+        <com.google.android.material.slider.Slider
+            android:id="@+id/volume_slider"
+            android:layout_width="260dp"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/cd_video_volume"
+            android:stepSize="5"
+            android:valueFrom="0"
+            android:valueTo="100" />
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/remove_panel"
         android:layout_width="520dp"
         android:layout_height="wrap_content"

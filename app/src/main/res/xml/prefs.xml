@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
     <PreferenceCategory app:title="Slideshow" app:iconSpaceReserved="false">
         <ListPreference app:key="photo_seconds" app:title="Show each photo for" app:defaultValue="10"
             app:entries="@array/photo_seconds_labels" app:entryValues="@array/photo_seconds_values"
@@ -23,7 +24,10 @@
         <ListPreference app:key="video_quality" app:title="Video quality" app:defaultValue="convert"
             app:entries="@array/video_quality_labels" app:entryValues="@array/video_quality_values"
             app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
-        <SwitchPreferenceCompat app:key="mute_videos" app:title="Mute videos" app:defaultValue="true" app:iconSpaceReserved="false" />
+        <SeekBarPreference app:key="video_volume" app:title="Video volume"
+            app:summary="Share of the tablet's media volume, so videos can play quieter than music or radio. 0 = muted. Also adjustable on the slideshow's controls."
+            app:min="0" android:max="100" app:seekBarIncrement="5" app:showSeekBarValue="true" app:updatesContinuously="true"
+            app:defaultValue="0" app:iconSpaceReserved="false" />
         <ListPreference app:key="max_video_seconds" app:title="Video length" app:defaultValue="0"
             app:entries="@array/video_cap_labels" app:entryValues="@array/video_cap_values"
             app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />

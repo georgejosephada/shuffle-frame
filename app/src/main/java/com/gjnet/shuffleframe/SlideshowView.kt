@@ -31,6 +31,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.google.android.material.slider.Slider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -142,6 +143,10 @@ class SlideshowView(context: Context) : FrameLayout(context) {
     private val pauseButton: ImageButton = overlay.findViewById(R.id.btn_pause)
     private val info: TextView = overlay.findViewById(R.id.info)
     private val removePanel: View = overlay.findViewById(R.id.remove_panel)
+    private val volumeButton: ImageButton = overlay.findViewById(R.id.btn_volume)
+    private val volumeSlider: Slider = overlay.findViewById(R.id.volume_slider)
+    /** Level the speaker button restores after muting. */
+    private var unmuteVolume = 50
 
     private var current: PlayItem? = null
     /** The item actually on screen (current may still be loading). */
@@ -192,6 +197,16 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         pauseButton.setOnClickListener { togglePause(); pokeOverlay() }
         overlay.findViewById<View>(R.id.btn_close).setOnClickListener { onExit?.invoke() }
         overlay.findViewById<View>(R.id.btn_remove).setOnClickListener { showRemovePanel(true) }
+        volumeSlider.setLabelFormatter { "${it.roundToInt()}%" }
+        volumeSlider.addOnChangeListener { _, value, fromUser ->
+            if (fromUser) setVolume(value.roundToInt())
+        }
+        volumeButton.setOnClickListener {
+            val v = prefs.videoVolume
+            if (v > 0) unmuteVolume = v
+            setVolume(if (v > 0) 0 else unmuteVolume)
+        }
+        syncVolumeControls()
         overlay.findViewById<View>(R.id.remove_cancel).setOnClickListener { showRemovePanel(false) }
         overlay.findViewById<View>(R.id.remove_in_photos).setOnClickListener { removeInGooglePhotos() }
         overlay.findViewById<View>(R.id.remove_hide).setOnClickListener { hideCurrent() }
@@ -349,7 +364,7 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         videoError = false
         Store.nowPlaying = item.key
         p.setMediaItem(MediaItem.fromUri(Uri.fromFile(item.file)))
-        p.volume = if (prefs.muteVideos) 0f else 1f
+        p.volume = Prefs.gain(prefs.videoVolume)
         p.repeatMode = Player.REPEAT_MODE_OFF
         p.prepare()
         p.playWhenReady = !paused
@@ -572,6 +587,7 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         removeCallbacks(hideOverlay)
         if (show) {
             updateInfo()
+            syncVolumeControls()
             overlay.alpha = 0f
             overlay.visibility = VISIBLE
             overlay.animate().alpha(1f).setDuration(200).start()
@@ -580,6 +596,21 @@ class SlideshowView(context: Context) : FrameLayout(context) {
             closePanel()
             overlay.animate().alpha(0f).setDuration(200).withEndAction { overlay.visibility = GONE }.start()
         }
+    }
+
+    /** Saves the video volume and applies it to the playing video at once. */
+    private fun setVolume(volume: Int) {
+        prefs.videoVolume = volume
+        player?.volume = Prefs.gain(prefs.videoVolume)
+        syncVolumeControls()
+        pokeOverlay()
+    }
+
+    private fun syncVolumeControls() {
+        val v = prefs.videoVolume
+        volumeSlider.value = ((v + 2) / 5 * 5).toFloat().coerceIn(0f, 100f)
+        volumeButton.setImageResource(if (v == 0) R.drawable.ic_volume_off else R.drawable.ic_volume)
+        volumeButton.contentDescription = context.getString(if (v == 0) R.string.cd_unmute else R.string.cd_mute)
     }
 
     private fun pokeOverlay() {

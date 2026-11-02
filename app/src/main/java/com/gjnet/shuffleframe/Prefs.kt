@@ -15,6 +15,9 @@ class Prefs(ctx: Context) {
             "photo_format" to (R.array.photo_format_values to "webp"),
         )
         val edit = sp.edit()
+        // "Mute videos" became a volume level; keep what was chosen.
+        if (!sp.contains("video_volume")) edit.putInt("video_volume", if (sp.getBoolean("mute_videos", true)) 0 else 100)
+        edit.remove("mute_videos")
         for ((key, spec) in lists) {
             val value = sp.getString(key, null) ?: continue
             if (value !in ctx.resources.getStringArray(spec.first)) edit.putString(key, spec.second)
@@ -31,7 +34,10 @@ class Prefs(ctx: Context) {
     val showCaption get() = sp.getBoolean("show_caption", true)
     val balanceAlbums get() = sp.getBoolean("balance_albums", false)
     val includeVideos get() = sp.getBoolean("include_videos", true)
-    val muteVideos get() = sp.getBoolean("mute_videos", true)
+    /** Video sound as a share of the tablet's media volume, 0–100 (0 = muted). */
+    var videoVolume: Int
+        get() = sp.getInt("video_volume", 0).coerceIn(0, 100)
+        set(v) = sp.edit().putInt("video_volume", v.coerceIn(0, 100)).apply()
     val maxVideoSeconds get() = int("max_video_seconds", 0)
     /** "convert" (1080p HEVC made on the tablet), "google" (Google's compact 1080p) or "original". */
     val videoQuality: String get() = sp.getString("video_quality", VIDEO_CONVERT) ?: VIDEO_CONVERT
@@ -46,6 +52,9 @@ class Prefs(ctx: Context) {
     val frameSkipAirplane get() = sp.getBoolean("frame_skip_airplane", false)
 
     companion object {
+        /** Player gain for a volume level; squared so the slider's middle sounds like half as loud. */
+        fun gain(volume: Int): Float = (volume / 100f).let { it * it }
+
         const val VIDEO_CONVERT = "convert"
         const val VIDEO_GOOGLE = "google"
         const val VIDEO_ORIGINAL = "original"
