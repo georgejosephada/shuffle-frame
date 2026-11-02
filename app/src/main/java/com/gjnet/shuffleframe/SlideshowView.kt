@@ -145,6 +145,7 @@ class SlideshowView(context: Context) : FrameLayout(context) {
     private val removePanel: View = overlay.findViewById(R.id.remove_panel)
     private val volumeButton: ImageButton = overlay.findViewById(R.id.btn_volume)
     private val volumeSlider: Slider = overlay.findViewById(R.id.volume_slider)
+    private val volumeValue: TextView = overlay.findViewById(R.id.volume_value)
     /** Level the speaker button restores after muting. */
     private var unmuteVolume = 50
 
@@ -197,7 +198,6 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         pauseButton.setOnClickListener { togglePause(); pokeOverlay() }
         overlay.findViewById<View>(R.id.btn_close).setOnClickListener { onExit?.invoke() }
         overlay.findViewById<View>(R.id.btn_remove).setOnClickListener { showRemovePanel(true) }
-        volumeSlider.setLabelFormatter { "${it.roundToInt()}%" }
         volumeSlider.addOnChangeListener { _, value, fromUser ->
             if (fromUser) setVolume(value.roundToInt())
         }
@@ -609,6 +609,7 @@ class SlideshowView(context: Context) : FrameLayout(context) {
     private fun syncVolumeControls() {
         val v = prefs.videoVolume
         volumeSlider.value = ((v + 2) / 5 * 5).toFloat().coerceIn(0f, 100f)
+        volumeValue.text = "$v%"
         volumeButton.setImageResource(if (v == 0) R.drawable.ic_volume_off else R.drawable.ic_volume)
         volumeButton.contentDescription = context.getString(if (v == 0) R.string.cd_unmute else R.string.cd_mute)
     }
