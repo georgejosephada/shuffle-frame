@@ -40,6 +40,9 @@
             app:entries="@array/sync_labels" app:entryValues="@array/sync_values"
             app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
         <SwitchPreferenceCompat app:key="wifi_only" app:title="Background sync on Wi-Fi only" app:defaultValue="true" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="keep_awake_charging" app:title="Keep the screen on while syncing on the charger"
+            app:summary="Downloads and conversions run much faster with the screen on. While there's a lot to do on the charger, the screen won't turn off (with frame mode on, the photo frame does this). If the tablet isn't plugged in then, it asks you to, once until you next plug it in."
+            app:defaultValue="true" app:iconSpaceReserved="false" />
         <Preference app:key="battery" app:title="Allow background activity" app:iconSpaceReserved="false" />
         <Preference app:key="storage" app:title="Space used on this tablet" app:selectable="false" app:iconSpaceReserved="false" />
     </PreferenceCategory>

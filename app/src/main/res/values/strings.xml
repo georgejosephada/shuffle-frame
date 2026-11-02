@@ -72,6 +72,8 @@
     <string name="cd_next">Next</string>
     <string name="cd_pause">Pause</string>
     <string name="cd_close">Close</string>
+    <string name="plug_in_channel">Plug-in reminders</string>
+    <string name="plug_in_title">Plug in the tablet to speed this up</string>
     <string name="quality_lower_title">Lower the quality?</string>
     <string name="quality_higher_title">Raise the quality?</string>
     <string name="quality_proceed">Proceed</string>
@@ -102,5 +104,17 @@
     <plurals name="albums">
         <item quantity="one">%d album</item>
         <item quantity="other">%d albums</item>
+    </plurals>
+    <plurals name="plug_in_download">
+        <item quantity="one">%d item to download. On the charger the screen stays on and it goes much faster.</item>
+        <item quantity="other">%d items to download. On the charger the screen stays on and it goes much faster.</item>
+    </plurals>
+    <plurals name="plug_in_convert">
+        <item quantity="one">%d video to convert. On the charger the screen stays on and it goes much faster.</item>
+        <item quantity="other">%d videos to convert. On the charger the screen stays on and it goes much faster.</item>
+    </plurals>
+    <plurals name="plug_in_convert_waiting">
+        <item quantity="one">%d video waits to be converted; that only happens on the charger.</item>
+        <item quantity="other">%d videos wait to be converted; that only happens on the charger.</item>
     </plurals>
 </resources>

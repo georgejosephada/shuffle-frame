@@ -50,6 +50,8 @@ class Prefs(ctx: Context) {
     /** Photos as Google's WebP render (smaller) or JPEG. */
     val photoWebp get() = sp.getString("photo_format", "webp") == "webp"
     val syncMinutes get() = int("sync_interval", 30)
+    /** Keep the screen on while a heavy sync runs on the charger (and ask to plug in otherwise). */
+    val keepAwakeCharging get() = sp.getBoolean("keep_awake_charging", true)
     val wifiOnly get() = sp.getBoolean("wifi_only", true)
     val autoStart get() = sp.getBoolean("auto_start", false)
     val frameMode get() = sp.getBoolean("frame_mode", true)

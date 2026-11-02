@@ -47,6 +47,7 @@ class FrameService : Service() {
                 }
                 Intent.ACTION_SCREEN_ON -> handler.removeCallbacks(launchWhenLocked)
                 Intent.ACTION_USER_PRESENT -> setSnoozed(context, false)
+                Intent.ACTION_POWER_CONNECTED -> KeepAwake.onPluggedIn(context)
             }
         }
     }
@@ -105,6 +106,7 @@ class FrameService : Service() {
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_USER_PRESENT)
+                addAction(Intent.ACTION_POWER_CONNECTED)
             },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )

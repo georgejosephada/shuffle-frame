@@ -58,8 +58,10 @@ object Sync {
                 val outOfSpace = AtomicBoolean(false)
                 val waitingForCharger = AtomicBoolean(false)
                 var finished = false
+                var awake = false
                 try {
                     clearLeftovers(ctx)
+                    if (FrameConditions.pluggedIn(ctx)) KeepAwake.onPluggedIn(ctx)
                     val albums = Store.albums().filter { if (onlyAlbum != null) it.key == onlyAlbum else it.enabled }
                     val prefs = Prefs(ctx)
                     val policy = prefs.videoQuality
@@ -68,7 +70,11 @@ object Sync {
                         .filter { policy != Prefs.VIDEO_CONVERT || it.second.type == MediaType.PHOTO }
                     val videos = Store.videosToProcess(policy)
                     val photoFormat = if (prefs.photoWebp) "webp" else "jpeg"
-                    if (queue.size > 20 || videos.isNotEmpty() || Store.photoFormatDone != photoFormat) onHeavyWork()
+                    if (queue.size > 20 || videos.isNotEmpty() || Store.photoFormatDone != photoFormat) {
+                        onHeavyWork()
+                        KeepAwake.begin(ctx)
+                        awake = true
+                    }
                     // Low on space: converting stored videos frees space, so do that first.
                     if (lowOnSpace(ctx) && policy == Prefs.VIDEO_CONVERT) {
                         processVideos(ctx, Store.videosToProcess(policy).filter { Store.videoVariant(it.key) == VideoVariant.ORIGINAL &&
@@ -89,6 +95,7 @@ object Sync {
                     Store.sweepOrphans()
                     finished = true
                 } finally {
+                    if (awake) KeepAwake.end(ctx)
                     val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())
                     val problems = listingErrors.size + failedDownloads.count { it.value.get() > 0 }
                     val message = when {
@@ -154,6 +161,7 @@ object Sync {
         outOfSpace: AtomicBoolean,
     ) {
         if (queue.isEmpty()) return
+        if (queue.size > 20) KeepAwake.askToPlugIn(ctx, KeepAwake.Work.DOWNLOAD, queue.size)
         val side = photoSide(ctx)
         val prefs = Prefs(ctx)
         val done = AtomicInteger()
@@ -210,6 +218,7 @@ object Sync {
         val webp = format == "webp"
         val side = photoSide(ctx)
         val todo = Store.storedPhotos().filter { isWebp(Store.mediaFile(it.key, it.type)) != webp }
+        if (todo.size > 20) KeepAwake.askToPlugIn(ctx, KeepAwake.Work.DOWNLOAD, todo.size)
         val failed = AtomicInteger()
         val done = AtomicInteger()
         val gate = Semaphore(PARALLEL_DOWNLOADS)
@@ -263,6 +272,10 @@ object Sync {
         }
         // Converting is heavy work; by default it only runs on the charger.
         val needsCharger = policy == Prefs.VIDEO_CONVERT && Prefs(ctx).convertOnlyCharging
+        // Conversions are always heavy; a few re-downloads aren't worth a prompt.
+        // Not when space is what holds them up: the charger wouldn't help.
+        if (policy == Prefs.VIDEO_CONVERT && !lowOnSpace(ctx)) KeepAwake.askToPlugIn(ctx, KeepAwake.Work.CONVERT, queue.size)
+        else if (queue.size > 5) KeepAwake.askToPlugIn(ctx, KeepAwake.Work.DOWNLOAD, queue.size)
         fun unplugged() = (needsCharger && !FrameConditions.pluggedIn(ctx)).also { if (it) waitingForCharger.set(true) }
         coroutineScope {
             // Rendezvous: the next original downloads only while the current one converts.

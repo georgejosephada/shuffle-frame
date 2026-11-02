@@ -19,6 +19,11 @@ Google Photos albums (photos and videos), kept in sync automatically.
   Google's size; only while charging unless switched off) / originals. Changing photo or video
   quality asks first, then replaces existing files in the background. Downloads pause below 5 GB
   free.
+- Heavy syncs run much faster with the screen on (Android throttles background work with it off).
+  While one runs on the charger, the screen is kept from turning off (Settings → Keep the screen on
+  while syncing on the charger, on by default), unless frame mode will put the slideshow up anyway.
+  Off the charger, a notification asks to plug in, once for downloads and once for conversions
+  until the next plug-in or app restart.
 - Everything in a shared album is included, whoever added it; nobody needs to tap "Save".
 - **Deletions mirror**: an item removed from the album is deleted from the tablet on the next sync.
   Safety net: if one sync would remove more than half of an album (or the album lists as empty),
