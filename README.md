@@ -39,8 +39,11 @@ Google Photos albums (photos and videos), kept in sync automatically.
 - **Frame mode** (`FrameService`): whenever the screen turns off, the slideshow turns it back on
   over the lock screen (via a full-screen notification, like an alarm clock), if the conditions
   in Settings allow: battery at least N % or charging, not in battery saver, optionally not in
-  airplane mode. It ends when a condition fails. Pressing power or ✕ on the frame keeps it off
-  until the tablet is next unlocked. Android's own screen saver isn't used because OxygenOS
+  airplane mode. It ends when a condition fails. Pressing power over it just turns the screen
+  off; waking the tablet on the lock screen brings the slideshow back (after a second, and not
+  over an alarm or call), and unlocking closes it. ✕ keeps frame mode off until the next unlock.
+  The ongoing *Photo frame* notification, also on the lock screen, opens the slideshow when
+  tapped (no unlock needed) and has Pause until unlock / Resume. Android's own screen saver isn't used because OxygenOS
   hides it and never runs it on battery (`mDreamsEnabledOnBatteryConfig=false`).
 - A *Finish setting up* card on the main screen lists any missing one-time permission
   (notifications, full-screen notifications, installing updates, background activity).

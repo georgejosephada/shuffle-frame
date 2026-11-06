@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.os.PowerManager
+import android.os.SystemClock
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -18,21 +19,29 @@ open class SlideshowActivity : AppCompatActivity() {
     private lateinit var view: SlideshowView
     /** Started by frame mode: shown over the lock screen and stopped when conditions fail. */
     private val frame get() = this is FrameSlideshowActivity
+    /** Started from the notification: shown whatever the frame conditions say. */
+    private var manual = false
+    /** Set while this screen itself asked to unlock (to open something), so it stays behind. */
+    private var leaving = false
     private var receiverRegistered = false
 
     private val frameEvents = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == Intent.ACTION_SCREEN_OFF) {
-                // Power button while the frame is up (it keeps the screen on, so not a timeout).
-                FrameService.setSnoozed(context, true)
-                finish()
-            } else if (!FrameConditions.allowed(context)) finish()
+            when {
+                // Power button while the frame is up (it keeps the screen on, so not a timeout):
+                // off for now; it comes back when the screen is next woken.
+                intent.action == Intent.ACTION_SCREEN_OFF -> { turnedOffByUser(); finish() }
+                // Unlocked (e.g. face unlock on wake): the user wants the tablet, not the frame.
+                intent.action == Intent.ACTION_USER_PRESENT -> if (!leaving) finish()
+                !manual && !FrameConditions.allowed(context) -> finish()
+            }
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         getSystemService(NotificationManager::class.java).cancel(FrameService.LAUNCH_ID)
+        readManual(intent, fresh = savedInstanceState == null)
         if (frame) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -53,6 +62,18 @@ open class SlideshowActivity : AppCompatActivity() {
         hideSystemBars()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        readManual(intent, fresh = true)
+    }
+
+    /** Started from the notification? Only a new request (not a recreation) lifts a pause. */
+    private fun readManual(intent: Intent?, fresh: Boolean) {
+        manual = intent?.getBooleanExtra(EXTRA_MANUAL, false) == true
+        if (manual && fresh) FrameService.setSnoozed(this, false)
+    }
+
     override fun onResume() {
         super.onResume()
         // Turn the screen on only for the launch; otherwise Android re-applies it whenever the
@@ -69,11 +90,17 @@ open class SlideshowActivity : AppCompatActivity() {
         super.onStart()
         visible++
         if (frame) {
-            if (!FrameConditions.allowed(this)) {
+            val km = getSystemService(KeyguardManager::class.java)
+            // Unlocked before it got here (e.g. face unlock on wake): not wanted any more.
+            val unlocked = km.isDeviceSecure && !km.isKeyguardLocked
+            if (!manual && (unlocked || !FrameConditions.allowed(this))) {
                 finish()
                 return
             }
-            val filter = FrameConditions.changes().apply { addAction(Intent.ACTION_SCREEN_OFF) }
+            val filter = FrameConditions.changes().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_USER_PRESENT)
+            }
             ContextCompat.registerReceiver(this, frameEvents, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
             receiverRegistered = true
         }
@@ -88,10 +115,10 @@ open class SlideshowActivity : AppCompatActivity() {
             receiverRegistered = false
         }
         // The screen can't time out while a slideshow is up, so it going off means the power
-        // button: keep frame mode quiet until the next unlock. Android delivers this stop and
-        // FrameService's screen-off broadcast in either order, so both snooze.
+        // button: no frame on this screen-off. Android delivers this stop and FrameService's
+        // screen-off broadcast in either order, so both record it.
         if (!getSystemService(PowerManager::class.java).isInteractive) {
-            FrameService.setSnoozed(this, true)
+            turnedOffByUser()
             if (frame) finish()
         }
         super.onStop()
@@ -109,8 +136,11 @@ open class SlideshowActivity : AppCompatActivity() {
             proceed()
             return
         }
+        leaving = true
         km.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
             override fun onDismissSucceeded() = proceed()
+            override fun onDismissCancelled() { leaving = false }
+            override fun onDismissError() { leaving = false }
         })
     }
 
@@ -125,6 +155,12 @@ open class SlideshowActivity : AppCompatActivity() {
         /** Number of slideshow screens currently started (main thread only). */
         var visible = 0
             private set
+        /** When the user last switched the screen off over a slideshow (elapsed realtime). */
+        var turnedOffAt = 0L
+            private set
+        const val EXTRA_MANUAL = "manual"
+
+        private fun turnedOffByUser() { turnedOffAt = SystemClock.elapsedRealtime() }
     }
 }
 

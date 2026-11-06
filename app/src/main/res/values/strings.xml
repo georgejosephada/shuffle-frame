@@ -66,7 +66,11 @@
     <string name="update_failed">Update failed: %1$s</string>
     <string name="frame_channel">Frame mode</string>
     <string name="frame_launch_channel">Frame mode slideshow</string>
-    <string name="frame_notification">Frame mode is on</string>
+    <string name="frame_notification">Photo frame</string>
+    <string name="frame_notification_on">Tap to show your photos. They also come on when the screen turns off or wakes.</string>
+    <string name="frame_notification_paused">Paused until you next unlock. Tap to show your photos now.</string>
+    <string name="frame_pause">Pause until unlock</string>
+    <string name="frame_resume">Resume</string>
     <string name="frame_launch_notification">Starting slideshow</string>
     <string name="cd_prev">Previous</string>
     <string name="cd_next">Next</string>

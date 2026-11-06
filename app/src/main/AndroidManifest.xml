@@ -54,6 +54,7 @@
             android:excludeFromRecents="true"
             android:exported="false"
             android:launchMode="singleTask"
+            android:showWhenLocked="true"
             android:taskAffinity="com.gjnet.shuffleframe.frame"
             android:theme="@style/Theme.ShuffleFrame.Slideshow" />
 
@@ -87,6 +88,10 @@
 
         <receiver
             android:name=".InstallResultReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".FrameService$Actions"
             android:exported="false" />
 
         <receiver
