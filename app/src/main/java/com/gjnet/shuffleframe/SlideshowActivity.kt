@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
 import android.os.PowerManager
 import android.os.SystemClock
@@ -21,9 +22,21 @@ open class SlideshowActivity : AppCompatActivity() {
     private val frame get() = this is FrameSlideshowActivity
     /** Started from the notification: shown whatever the frame conditions say. */
     private var manual = false
-    /** Set while this screen itself asked to unlock (to open something), so it stays behind. */
+    /** Set while this screen itself asked to unlock (to open something); it closes after. */
     private var leaving = false
     private var receiverRegistered = false
+    private var unlockRegistered = false
+
+    /**
+     * Unlocking means the user wants the tablet, not the frame, so the frame always closes,
+     * whether it was on screen or behind the lock screen (e.g. after the home gesture). Kept
+     * registered while stopped for that reason.
+     */
+    private val unlockEvents = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (!leaving) finish()
+        }
+    }
 
     private val frameEvents = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -31,8 +44,6 @@ open class SlideshowActivity : AppCompatActivity() {
                 // Power button while the frame is up (it keeps the screen on, so not a timeout):
                 // off for now; it comes back when the screen is next woken.
                 intent.action == Intent.ACTION_SCREEN_OFF -> { turnedOffByUser(); finish() }
-                // Unlocked (e.g. face unlock on wake): the user wants the tablet, not the frame.
-                intent.action == Intent.ACTION_USER_PRESENT -> if (!leaving) finish()
                 !manual && !FrameConditions.allowed(context) -> finish()
             }
         }
@@ -45,6 +56,10 @@ open class SlideshowActivity : AppCompatActivity() {
         if (frame) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
+            ContextCompat.registerReceiver(
+                this, unlockEvents, IntentFilter(Intent.ACTION_USER_PRESENT), ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+            unlockRegistered = true
         }
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -97,10 +112,7 @@ open class SlideshowActivity : AppCompatActivity() {
                 finish()
                 return
             }
-            val filter = FrameConditions.changes().apply {
-                addAction(Intent.ACTION_SCREEN_OFF)
-                addAction(Intent.ACTION_USER_PRESENT)
-            }
+            val filter = FrameConditions.changes().apply { addAction(Intent.ACTION_SCREEN_OFF) }
             ContextCompat.registerReceiver(this, frameEvents, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
             receiverRegistered = true
         }
@@ -125,11 +137,15 @@ open class SlideshowActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        if (unlockRegistered) unregisterReceiver(unlockEvents)
         view.release()
         super.onDestroy()
     }
 
-    /** Opening other screens from over the lock screen needs the user to unlock first. */
+    /**
+     * Opening other screens from over the lock screen needs the user to unlock first; once
+     * unlocked, the frame opens the screen and closes like after any other unlock.
+     */
     private fun unlockThen(proceed: () -> Unit) {
         val km = getSystemService(KeyguardManager::class.java)
         if (!km.isKeyguardLocked) {
@@ -138,7 +154,10 @@ open class SlideshowActivity : AppCompatActivity() {
         }
         leaving = true
         km.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
-            override fun onDismissSucceeded() = proceed()
+            override fun onDismissSucceeded() {
+                proceed()
+                finish()
+            }
             override fun onDismissCancelled() { leaving = false }
             override fun onDismissError() { leaving = false }
         })
