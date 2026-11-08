@@ -79,6 +79,9 @@ open class SlideshowActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // Brought back by a launch: that notification has done its job (left up, the next
+        // launch would only update it, and Android doesn't start an update's full-screen intent).
+        getSystemService(NotificationManager::class.java).cancel(FrameService.LAUNCH_ID)
         setIntent(intent)
         readManual(intent, fresh = true)
     }
@@ -86,7 +89,10 @@ open class SlideshowActivity : AppCompatActivity() {
     /** Started from the notification? Only a new request (not a recreation) lifts a pause. */
     private fun readManual(intent: Intent?, fresh: Boolean) {
         manual = intent?.getBooleanExtra(EXTRA_MANUAL, false) == true
-        if (manual && fresh) FrameService.setSnoozed(this, false)
+        if (manual && fresh) {
+            FrameService.setSnoozed(this, false)
+            FrameService.setHeldOff(this, false)
+        }
     }
 
     override fun onResume() {

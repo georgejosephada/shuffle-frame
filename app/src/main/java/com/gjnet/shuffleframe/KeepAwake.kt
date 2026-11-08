@@ -75,8 +75,14 @@ object KeepAwake {
     }
 
     /** Frame mode will put the slideshow up when the screen times out (which keeps it on). */
-    private fun frameTakesOver(ctx: Context) =
-        Prefs(ctx).frameMode && !FrameService.isSnoozed(ctx) && FrameConditions.allowed(ctx)
+    private fun frameTakesOver(ctx: Context) = Prefs(ctx).frameMode && !FrameService.isSnoozed(ctx) &&
+        !FrameService.isHeldOff(ctx) && FrameConditions.allowed(ctx)
+
+    /** Something [frameTakesOver] depends on changed; re-checks while a sync runs. */
+    @Synchronized
+    fun refresh(ctx: Context) {
+        if (receiver != null) update(ctx.applicationContext, FrameConditions.pluggedIn(ctx))
+    }
 
     @Synchronized
     private fun update(ctx: Context, plugged: Boolean) {

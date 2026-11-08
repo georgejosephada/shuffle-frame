@@ -40,10 +40,14 @@ Google Photos albums (photos and videos), kept in sync automatically.
   over the lock screen (via a full-screen notification, like an alarm clock), if the conditions
   in Settings allow: battery at least N % or charging, not in battery saver, optionally not in
   airplane mode. It ends when a condition fails. Pressing power over it just turns the screen
-  off; waking the tablet on the lock screen brings the slideshow back (after a second, and not
-  over an alarm or call), and unlocking closes it. ✕ keeps frame mode off until the next unlock.
-  The ongoing *Photo frame* notification, also on the lock screen, opens the slideshow when
-  tapped (no unlock needed) and has Pause until unlock / Resume. Android's own screen saver isn't used because OxygenOS
+  off, and it stays off until you wake the tablet yourself: that brings the slideshow back
+  (after a second). Wakes you didn't make (plugging in or unplugging the charger, an alarm, a
+  call, a notification that makes a sound) leave things as they were, and so does the screen
+  timing out after them. Unlocking always closes it. ✕ keeps frame mode off until the next
+  unlock. The ongoing *Photo frame* notification, also on the lock screen, opens the slideshow
+  when tapped (no unlock needed) and has Pause until unlock / Resume. Apps can't see why the
+  screen woke, so a silent notification that turns the screen on counts as you (on the OnePlus
+  Pad ordinary notifications don't turn it on). Android's own screen saver isn't used because OxygenOS
   hides it and never runs it on battery (`mDreamsEnabledOnBatteryConfig=false`).
 - A *Finish setting up* card on the main screen lists any missing one-time permission
   (notifications, full-screen notifications, installing updates, background activity).
@@ -83,6 +87,9 @@ JAVA_HOME=~/Android/jdk ./gradlew assembleDebugAndroidTest
 adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb shell am instrument -w -e class com.gjnet.shuffleframe.MediaPlaybackTest com.gjnet.shuffleframe.test/androidx.test.runner.AndroidJUnitRunner
 ```
+
+`WakeTest` checks frame mode's wake handling the same way (frame mode on, tablet locked, off the
+charger, notification sound on); it turns the screen off and on a few times.
 
 If Google changes its page format, sync shows an error on the album card and the slideshow keeps
 playing what is already downloaded; the parser is all in `GooglePhotos.kt`.

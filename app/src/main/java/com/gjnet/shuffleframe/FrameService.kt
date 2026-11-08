@@ -13,6 +13,7 @@ import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.AudioPlaybackConfiguration
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -29,7 +30,10 @@ import androidx.preference.PreferenceManager
  * can't do this here: OxygenOS hides its settings and never starts it on battery.
  *
  * Switching the screen off over the slideshow turns it off for now; waking the tablet brings
- * the slideshow back over the lock screen. Closing it with ✕ (or Pause in the notification)
+ * the slideshow back over the lock screen. Wakes the user didn't ask for (plugging in or
+ * unplugging the charger, an alarm, a call, a notification that sounds) leave things as they
+ * were: nothing starts, and the frame stays off until the user wakes the tablet themselves,
+ * taps the notification or unlocks. Closing it with ✕ (or Pause in the notification)
  * keeps frame mode quiet until the next unlock. The ongoing notification, also on the lock
  * screen, starts the slideshow when tapped.
  */
@@ -37,6 +41,23 @@ class FrameService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var registered = false
     private var waitedMs = 0L
+    /** When the charger was last plugged in or unplugged (elapsed realtime). */
+    private var plugChangedAt = 0L
+    /** When a notification, alarm or ringtone sound last started playing (elapsed realtime). */
+    private var alertSoundAt = 0L
+    /** Whether an alarm, ringtone or call is sounding, and when the last one stopped. */
+    private var urgentSounding = false
+    private var urgentEndedAt = 0L
+
+    private val playback = object : AudioManager.AudioPlaybackCallback() {
+        override fun onPlaybackConfigChanged(configs: List<AudioPlaybackConfiguration>) {
+            val now = SystemClock.elapsedRealtime()
+            if (configs.any { it.audioAttributes.usage in ALERT_USAGES }) alertSoundAt = now
+            val urgent = configs.any { it.audioAttributes.usage in URGENT_USAGES }
+            if (urgentSounding && !urgent) urgentEndedAt = now
+            urgentSounding = urgent
+        }
+    }
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -44,10 +65,15 @@ class FrameService : Service() {
                 Intent.ACTION_SCREEN_OFF -> {
                     handler.removeCallbacks(launchWhenLocked)
                     handler.removeCallbacks(launchOnWake)
-                    // Power pressed while a slideshow was showing: the user wants the screen off.
-                    val byUser = SlideshowActivity.visible > 0 ||
-                        SystemClock.elapsedRealtime() - SlideshowActivity.turnedOffAt < 5_000
-                    if (!byUser) {
+                    // Power pressed while a slideshow was showing: the user wants the screen off,
+                    // and it stays off (even after a charger or alarm wake) until they wake it.
+                    // Likewise power pressed to silence an alarm or end a call (which may have
+                    // covered the slideshow): it doesn't come straight back.
+                    val now = SystemClock.elapsedRealtime()
+                    val byUser = SlideshowActivity.visible > 0 || now - SlideshowActivity.turnedOffAt < 5_000 ||
+                        urgentSounding || somethingElseUp() || now - urgentEndedAt < URGENT_OFF_WINDOW_MS
+                    if (byUser) setHeldOff(context, true)
+                    if (!isHeldOff(context)) {
                         waitedMs = 0
                         launchWhenLocked.run()
                     }
@@ -55,16 +81,21 @@ class FrameService : Service() {
                 Intent.ACTION_SCREEN_ON -> {
                     handler.removeCallbacks(launchWhenLocked)
                     // Woken on the lock screen: back to the photos (unlocking closes them). After
-                    // a moment, so whatever woke it (an alarm, a call, face unlock) shows first.
+                    // a moment, so whatever woke it (the charger, an alarm, a call, face unlock)
+                    // is known by then.
                     handler.removeCallbacks(launchOnWake)
                     handler.postDelayed(launchOnWake, WAKE_DELAY_MS)
                 }
                 Intent.ACTION_USER_PRESENT -> {
                     handler.removeCallbacks(launchOnWake)
+                    setHeldOff(context, false)
                     getSystemService(NotificationManager::class.java).cancel(LAUNCH_ID)
                     setSnoozed(context, false)
                 }
-                Intent.ACTION_POWER_CONNECTED -> KeepAwake.onPluggedIn(context)
+                Intent.ACTION_POWER_CONNECTED, Intent.ACTION_POWER_DISCONNECTED -> {
+                    plugChangedAt = SystemClock.elapsedRealtime()
+                    if (intent.action == Intent.ACTION_POWER_CONNECTED) KeepAwake.onPluggedIn(context)
+                }
             }
         }
     }
@@ -90,20 +121,32 @@ class FrameService : Service() {
     }
 
     private val launchOnWake = Runnable {
+        if (!getSystemService(PowerManager::class.java).isInteractive) return@Runnable
         val km = getSystemService(KeyguardManager::class.java)
         val locked = if (km.isDeviceSecure) km.isDeviceLocked else km.isKeyguardLocked
-        if (locked && getSystemService(PowerManager::class.java).isInteractive && !somethingElseUp()) maybeLaunch()
+        // Still unlocked (the lock delay): the user is at the tablet, so the next timeout counts.
+        if (!locked) {
+            setHeldOff(this, false)
+            return@Runnable
+        }
+        // Not woken by the user: keep things as they were. The screen was off with no frame up,
+        // so the timeout that ends this wake must not start one either.
+        if (wokenByCharger() || somethingElseUp() || SystemClock.elapsedRealtime() - alertSoundAt < ALERT_WAKE_WINDOW_MS) {
+            setHeldOff(this, true)
+            return@Runnable
+        }
+        setHeldOff(this, false)
+        maybeLaunch()
     }
+
+    /** Plugging in or unplugging turns the screen on: the plug broadcast comes around the wake. */
+    private fun wokenByCharger() = SystemClock.elapsedRealtime() - plugChangedAt < CHARGER_WAKE_WINDOW_MS
 
     /** A call, or an alarm or ringtone sounding: that app's screen is what the user needs. */
     private fun somethingElseUp(): Boolean {
         val am = getSystemService(AudioManager::class.java)
         if (am.mode != AudioManager.MODE_NORMAL) return true
-        val urgent = setOf(
-            AudioAttributes.USAGE_ALARM, AudioAttributes.USAGE_NOTIFICATION_RINGTONE,
-            AudioAttributes.USAGE_VOICE_COMMUNICATION,
-        )
-        return am.activePlaybackConfigurations.any { it.audioAttributes.usage in urgent }
+        return am.activePlaybackConfigurations.any { it.audioAttributes.usage in URGENT_USAGES }
     }
 
     override fun onCreate() {
@@ -134,11 +177,16 @@ class FrameService : Service() {
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_USER_PRESENT)
                 addAction(Intent.ACTION_POWER_CONNECTED)
+                addAction(Intent.ACTION_POWER_DISCONNECTED)
             },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         registered = true
         running = true
+        getSystemService(AudioManager::class.java).registerAudioPlaybackCallback(playback, handler)
+        // Restarted while unlocked: an unlock may have been missed, so don't keep the frame off.
+        val km = getSystemService(KeyguardManager::class.java)
+        if (!(if (km.isDeviceSecure) km.isDeviceLocked else km.isKeyguardLocked)) setHeldOff(this, false)
         if (resumeAfterUpdate) {
             resumeAfterUpdate = false
             maybeLaunch()
@@ -157,7 +205,10 @@ class FrameService : Service() {
         running = false
         handler.removeCallbacks(launchWhenLocked)
         handler.removeCallbacks(launchOnWake)
-        if (registered) unregisterReceiver(receiver)
+        if (registered) {
+            unregisterReceiver(receiver)
+            getSystemService(AudioManager::class.java).unregisterAudioPlaybackCallback(playback)
+        }
         super.onDestroy()
     }
 
@@ -166,6 +217,8 @@ class FrameService : Service() {
     private fun maybeLaunch() {
         if (!Prefs(this).frameMode || isSnoozed(this) || !FrameConditions.allowed(this)) return
         if (SlideshowActivity.visible > 0) return
+        // Never over a ringing alarm or call.
+        if (somethingElseUp()) return
         if (Store.playable().isEmpty()) return
         // A full-screen notification is how Android lets a background app turn the screen on
         // with an activity (the same mechanism alarm clocks use).
@@ -184,7 +237,10 @@ class FrameService : Service() {
             .setTimeoutAfter(10_000)
             .setAutoCancel(true)
             .build()
-        getSystemService(NotificationManager::class.java).notify(LAUNCH_ID, n)
+        // Always a new notification: Android only starts the full-screen intent of a new one.
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.cancel(LAUNCH_ID)
+        nm.notify(LAUNCH_ID, n)
     }
 
     companion object {
@@ -203,6 +259,26 @@ class FrameService : Service() {
         private const val MAX_LOCK_WAIT_MS = 30 * 60_000L
         /** Pause after a wake before the photos come back. */
         private const val WAKE_DELAY_MS = 1_000L
+        /** A wake this close to a charger change (either side) is the charger's doing. */
+        private const val CHARGER_WAKE_WINDOW_MS = 4_000L
+        /** A wake this soon after an alert sound started is that alert's doing. */
+        private const val ALERT_WAKE_WINDOW_MS = 4_000L
+        /** A screen-off this soon after an alarm, ringtone or call stopped is what stopped it. */
+        private const val URGENT_OFF_WINDOW_MS = 3_000L
+        private const val KEY_HELD_OFF = "frame_held_off"
+        /** Sounds whose app's screen is what the user needs right now. */
+        private val URGENT_USAGES = setOf(
+            AudioAttributes.USAGE_ALARM, AudioAttributes.USAGE_NOTIFICATION_RINGTONE,
+            AudioAttributes.USAGE_VOICE_COMMUNICATION,
+        )
+        /** Sounds that come with something else waking the screen (a message, a reminder, ...). */
+        @Suppress("DEPRECATION")
+        private val ALERT_USAGES = URGENT_USAGES + setOf(
+            AudioAttributes.USAGE_NOTIFICATION, AudioAttributes.USAGE_NOTIFICATION_EVENT,
+            AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT,
+            AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_REQUEST,
+            AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_DELAYED,
+        )
         private const val KEY_SNOOZED = "frame_snoozed"
 
         /** Starts or stops the service to match the "frame mode" setting. Safe to call often. */
@@ -228,6 +304,22 @@ class FrameService : Service() {
 
         fun isSnoozed(ctx: Context) =
             PreferenceManager.getDefaultSharedPreferences(ctx).getBoolean(KEY_SNOOZED, false)
+
+        /**
+         * The user switched the screen off over the slideshow, and hasn't since woken the tablet,
+         * tapped the notification or unlocked: screen-offs don't bring the frame back. Stored, so
+         * it survives the service being restarted.
+         */
+        fun setHeldOff(ctx: Context, held: Boolean) {
+            val sp = PreferenceManager.getDefaultSharedPreferences(ctx)
+            if (sp.getBoolean(KEY_HELD_OFF, false) == held) return
+            sp.edit().putBoolean(KEY_HELD_OFF, held).apply()
+            // Whether the frame will keep the screen on during a sync has changed.
+            KeepAwake.refresh(ctx)
+        }
+
+        fun isHeldOff(ctx: Context) =
+            PreferenceManager.getDefaultSharedPreferences(ctx).getBoolean(KEY_HELD_OFF, false)
 
         /**
          * The ongoing notification, on the lock screen too: tap to start the slideshow (it shows

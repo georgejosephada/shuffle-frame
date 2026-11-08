@@ -9,6 +9,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             FrameService.setSnoozed(context, false)
+            FrameService.setHeldOff(context, false)
             val sp = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
             if (sp.getBoolean(Updater.KEY_RESUME_FRAME, false)) {
                 sp.edit().remove(Updater.KEY_RESUME_FRAME).apply()
