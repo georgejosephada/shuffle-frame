@@ -42,7 +42,7 @@ Google Photos albums (photos and videos), kept in sync automatically.
   resumes. Nothing repeats within one order until everything has been shown. It plays offline
   from the local copy.
 - **Controls**: a tap on the left half of the slideshow goes back, on the right half forward
-  (swipes work too); either shows the controls, with *‹ Back* / *Next ›* hints in the middle of
+  (swipes work too, even ones that start on a control); either shows the controls, with *‹ Back* / *Next ›* hints in the middle of
   each half and play/pause in the centre. A tap in the centre only shows the controls.
 - **Frame mode** (`FrameService`): whenever the screen turns off, the slideshow turns it back on
   over the lock screen (via a full-screen notification, like an alarm clock), if the conditions

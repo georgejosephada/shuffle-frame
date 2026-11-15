@@ -238,6 +238,44 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         }
     }
 
+    private val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+    private val volumeBar: View = overlay.findViewById(R.id.volume_bar)
+    private var swipeDown: MotionEvent? = null
+
+    /**
+     * A sideways swipe that starts on a control (Back, Next, play/pause, the top buttons) still
+     * changes the photo: once the finger moves sideways past the touch slop, the swipe is taken from
+     * the control. Not on the volume bar, which owns its drags, nor on the open remove panel.
+     */
+    override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                swipeDown?.recycle()
+                swipeDown = if (overlay.visibility == VISIBLE && !hit(volumeBar, ev) &&
+                    !(removePanel.visibility == VISIBLE && hit(removePanel, ev))) MotionEvent.obtain(ev) else null
+            }
+            MotionEvent.ACTION_MOVE -> swipeDown?.let { down ->
+                val dx = abs(ev.x - down.x)
+                if (dx > touchSlop && dx > abs(ev.y - down.y)) {
+                    swipeDown = null
+                    // The gesture detector missed the down, which went to the control.
+                    gestures.onTouchEvent(down)
+                    gestures.onTouchEvent(ev)
+                    down.recycle()
+                    return true
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { swipeDown?.recycle(); swipeDown = null }
+        }
+        return false
+    }
+
+    private fun hit(v: View, ev: MotionEvent): Boolean {
+        if (v.visibility != VISIBLE) return false
+        val at = IntArray(2).also { v.getLocationOnScreen(it) }
+        return ev.rawX >= at[0] && ev.rawX < at[0] + v.width && ev.rawY >= at[1] && ev.rawY < at[1] + v.height
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         gestures.onTouchEvent(event)
