@@ -36,7 +36,7 @@ class Prefs(ctx: Context) {
     val blurBackground get() = sp.getBoolean("blur_background", true)
     val kenBurns get() = sp.getBoolean("ken_burns", true)
     val showCaption get() = sp.getBoolean("show_caption", true)
-    val balanceAlbums get() = sp.getBoolean("balance_albums", false)
+    val balanceAlbums get() = sp.getBoolean("balance_albums", true)
     /** A new order on every start or resume, every item equally likely (balancing is then off). */
     val trulyRandom get() = sp.getBoolean("truly_random", true)
     val includeVideos get() = sp.getBoolean("include_videos", true)

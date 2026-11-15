@@ -341,7 +341,7 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         val items = all.filter { videos || it.type == MediaType.PHOTO }
         warning.visibility = if (stale) VISIBLE else GONE
         itemCount = items.size
-        playlist.setItems(items, prefs.balanceAlbums && !prefs.trulyRandom)
+        playlist.setItems(items, prefs.balanceAlbums)
         updateInfo()
         if (items.isEmpty()) {
             clearScreen()

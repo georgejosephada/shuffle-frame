@@ -35,11 +35,12 @@ Google Photos albums (photos and videos), kept in sync automatically.
   (restorable from the album's menu). Share links are read-only, so the app itself can't edit
   the album.
 - The slideshow uses shuffle bags seeded from `SecureRandom`, drawn from every item in every
-  album (not a fixed-size selection). *Truly random order* (on by default): every item is equally
-  likely, and each start or resume of the slideshow begins a new order (Back still reaches what
-  was shown before). With it off, *Equal time per album* can give small albums as much screen
-  time as big ones (so their items repeat much more often), and an order carries on across
-  resumes. Nothing repeats within one order until everything has been shown. It plays offline
+  album (not a fixed-size selection). *Equal time per album* (on by default) gives every album the same
+  screen time whatever its size: each album has its own bag and albums are picked with equal
+  probability (so a small album's items repeat much more often); with it off, every item is
+  equally likely. *Truly random order* (on by default): each start or resume of the slideshow
+  begins a new order (Back still reaches what was shown before); with it off, an order carries
+  on across resumes. Nothing repeats within one order until everything has been shown. It plays offline
   from the local copy.
 - **Controls**: a tap on the left half of the slideshow goes back, on the right half forward
   (swipes work too, even ones that start on a control); either shows the controls, with *‹ Back* / *Next ›* hints in the middle of

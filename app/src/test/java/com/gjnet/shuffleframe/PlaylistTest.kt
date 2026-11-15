@@ -68,4 +68,20 @@ class PlaylistTest {
         p.previous()
         assertFalse(p.hasPrevious)
     }
+
+    @Test
+    fun balancedReshuffleGivesAlbumsEqualTime() {
+        val p = Playlist(Random(5))
+        // Album a0 has 1 of every 10 items; balanced, it still gets half the draws.
+        val items = (0 until 1000).map {
+            PlayItem("k$it", if (it % 10 == 0) "a0" else "a1", "Album", MediaType.PHOTO, File("x"), 0, 0, "")
+        }
+        p.setItems(items, balanced = true)
+        var small = 0
+        repeat(20) {
+            p.reshuffle()
+            repeat(100) { if (p.next()!!.albumKey == "a0") small++ }
+        }
+        assertTrue("small album shown $small of 2000", small in 850..1150)
+    }
 }
