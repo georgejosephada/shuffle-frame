@@ -15,8 +15,11 @@
             app:entries="@array/photo_format_labels" app:entryValues="@array/photo_format_values"
             app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
         <SwitchPreferenceCompat app:key="show_caption" app:title="Show date and album name" app:defaultValue="true" app:iconSpaceReserved="false" />
-        <SwitchPreferenceCompat app:key="balance_albums" app:title="Equal time per album"
-            app:summary="Off: every item equally likely. On: small albums show as often as big ones." app:defaultValue="false" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="truly_random" app:title="Truly random order"
+            app:summary="A new order every time the slideshow starts or comes back, with every photo and video equally likely"
+            app:defaultValue="true" app:disableDependentsState="true" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="balance_albums" app:title="Equal time per album" app:dependency="truly_random"
+            app:summary="Small albums show as often as big ones, so their items repeat more often. Needs truly random order off." app:defaultValue="false" app:iconSpaceReserved="false" />
         <SwitchPreferenceCompat app:key="auto_start" app:title="Start slideshow when the app opens" app:defaultValue="false" app:iconSpaceReserved="false" />
     </PreferenceCategory>
     <PreferenceCategory app:title="Videos" app:iconSpaceReserved="false">

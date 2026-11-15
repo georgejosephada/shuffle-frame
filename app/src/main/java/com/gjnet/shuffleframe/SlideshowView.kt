@@ -49,6 +49,7 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.TimeZone
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -141,6 +142,8 @@ class SlideshowView(context: Context) : FrameLayout(context) {
     }
     private val overlay: View = LayoutInflater.from(context).inflate(R.layout.slideshow_overlay, this, false)
     private val pauseButton: ImageButton = overlay.findViewById(R.id.btn_pause)
+    private val hintBack: View = overlay.findViewById(R.id.hint_back)
+    private val hintNext: View = overlay.findViewById(R.id.hint_next)
     private val info: TextView = overlay.findViewById(R.id.info)
     private val removePanel: View = overlay.findViewById(R.id.remove_panel)
     private val volumeButton: ImageButton = overlay.findViewById(R.id.btn_volume)
@@ -165,8 +168,18 @@ class SlideshowView(context: Context) : FrameLayout(context) {
 
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
-        override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-            setOverlayVisible(overlay.visibility != VISIBLE)
+        override fun onSingleTapUp(e: MotionEvent): Boolean {
+            if (removePanel.visibility == VISIBLE) {
+                showRemovePanel(false)
+                return true
+            }
+            // With the controls hidden, a tap where play/pause appears just brings them up, so
+            // pausing doesn't skip anything. Otherwise the left half goes back, the right forward.
+            if (overlay.visibility != VISIBLE && hypot(e.x - width / 2f, e.y - height / 2f) < dp(CENTRE_RADIUS_DP)) {
+                setOverlayVisible(true)
+                return true
+            }
+            step(forward = e.x >= width / 2f)
             return true
         }
         override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
@@ -192,9 +205,12 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         overlay.visibility = GONE
         overlay.z = 4f
         addView(overlay)
+        // Every tap counts (two quick taps skip twice), and so does a slow one.
+        gestures.setOnDoubleTapListener(null)
+        gestures.setIsLongpressEnabled(false)
 
-        overlay.findViewById<View>(R.id.btn_prev).setOnClickListener { go(false); pokeOverlay() }
-        overlay.findViewById<View>(R.id.btn_next).setOnClickListener { go(true); pokeOverlay() }
+        hintBack.setOnClickListener { step(forward = false) }
+        hintNext.setOnClickListener { step(forward = true) }
         pauseButton.setOnClickListener { togglePause(); pokeOverlay() }
         overlay.findViewById<View>(R.id.btn_close).setOnClickListener { onExit?.invoke() }
         overlay.findViewById<View>(R.id.btn_remove).setOnClickListener { showRemovePanel(true) }
@@ -231,6 +247,8 @@ class SlideshowView(context: Context) : FrameLayout(context) {
     fun start() {
         if (running) return
         running = true
+        // Truly random: every start or resume is a new order (stop() dropped what was queued).
+        if (prefs.trulyRandom) playlist.reshuffle()
         if (player == null) {
             player = ExoPlayer.Builder(context).build().also {
                 it.addListener(playerListener)
@@ -264,6 +282,11 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         player?.stop()
         playerView.alpha = 0f
         slots.forEach { it.motion?.pause() }
+        // Off screen the fade-out never runs: come back without the controls up.
+        removeCallbacks(hideOverlay)
+        closePanel()
+        overlay.animate().cancel()
+        overlay.visibility = GONE
     }
 
     fun release() {
@@ -280,7 +303,7 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         val items = all.filter { videos || it.type == MediaType.PHOTO }
         warning.visibility = if (stale) VISIBLE else GONE
         itemCount = items.size
-        playlist.setItems(items, prefs.balanceAlbums)
+        playlist.setItems(items, prefs.balanceAlbums && !prefs.trulyRandom)
         updateInfo()
         if (items.isEmpty()) {
             clearScreen()
@@ -311,9 +334,31 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         shown = null
     }
 
+    /** A tap to go back or forward: shows the controls and lights up the matching hint. */
+    private fun step(forward: Boolean) {
+        // With the remove question open, a tap outside it (a hint included) just closes it.
+        if (removePanel.visibility == VISIBLE) {
+            showRemovePanel(false)
+            return
+        }
+        if (forward || playlist.hasPrevious) go(forward)
+        setOverlayVisible(true)
+        (if (forward) hintNext else hintBack).animate().cancel()
+        (if (forward) hintNext else hintBack).apply {
+            scaleX = 1.15f; scaleY = 1.15f
+            animate().scaleX(1f).scaleY(1f).setDuration(250).start()
+        }
+    }
+
+    /** Back is dimmed when there's nothing to go back to. */
+    private fun updateHints() {
+        hintBack.alpha = if (playlist.hasPrevious) 1f else 0.4f
+    }
+
     private fun go(forward: Boolean) {
         if (!running) return
         val item = (if (forward) playlist.next() else playlist.previous()) ?: return
+        updateHints()
         job?.cancel()
         job = scope.launch { present(item) }
     }
@@ -587,8 +632,11 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         removeCallbacks(hideOverlay)
         if (show) {
             updateInfo()
+            updateHints()
             syncVolumeControls()
-            overlay.alpha = 0f
+            // Fading out already: come back from where it is, without a flicker.
+            overlay.animate().cancel()
+            if (overlay.visibility != VISIBLE) overlay.alpha = 0f
             overlay.visibility = VISIBLE
             overlay.animate().alpha(1f).setDuration(200).start()
             pokeOverlay()
@@ -623,6 +671,8 @@ class SlideshowView(context: Context) : FrameLayout(context) {
 
     private companion object {
         const val FADE_MS = 900L
+        /** Around play/pause: with the controls hidden, a tap here only shows them. */
+        const val CENTRE_RADIUS_DP = 96
         const val STALE_MS = 24 * 60 * 60 * 1000L
         const val CHROME = "com.android.chrome"
     }

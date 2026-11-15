@@ -37,6 +37,8 @@ class Prefs(ctx: Context) {
     val kenBurns get() = sp.getBoolean("ken_burns", true)
     val showCaption get() = sp.getBoolean("show_caption", true)
     val balanceAlbums get() = sp.getBoolean("balance_albums", false)
+    /** A new order on every start or resume, every item equally likely (balancing is then off). */
+    val trulyRandom get() = sp.getBoolean("truly_random", true)
     val includeVideos get() = sp.getBoolean("include_videos", true)
     /** Video sound as a share of the tablet's media volume, 0–100 (0 = muted). */
     var videoVolume: Int

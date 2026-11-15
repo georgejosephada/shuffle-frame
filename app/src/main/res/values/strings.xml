@@ -74,6 +74,8 @@
     <string name="frame_launch_notification">Starting slideshow</string>
     <string name="cd_prev">Previous</string>
     <string name="cd_next">Next</string>
+    <string name="hint_back">‹  Back</string>
+    <string name="hint_next">Next  ›</string>
     <string name="cd_pause">Pause</string>
     <string name="cd_close">Close</string>
     <string name="plug_in_channel">Plug-in reminders</string>

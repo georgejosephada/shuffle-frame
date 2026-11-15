@@ -49,39 +49,46 @@
             android:src="@drawable/ic_close" />
     </LinearLayout>
 
+    <!-- Play/pause in the middle; a tap on the left half goes back, on the right half forward.
+         The hints sit in the middle of the half they describe. -->
     <LinearLayout
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_marginBottom="56dp"
+        android:layout_gravity="center"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <ImageButton
-            android:id="@+id/btn_prev"
-            style="@style/OverlayButton"
-            android:layout_width="80dp"
-            android:layout_height="80dp"
-            android:contentDescription="@string/cd_prev"
-            android:src="@drawable/ic_prev" />
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1">
+
+            <TextView
+                android:id="@+id/hint_back"
+                style="@style/OverlayHint"
+                android:contentDescription="@string/cd_prev"
+                android:text="@string/hint_back" />
+        </FrameLayout>
 
         <ImageButton
             android:id="@+id/btn_pause"
             style="@style/OverlayButton"
             android:layout_width="104dp"
             android:layout_height="104dp"
-            android:layout_marginStart="40dp"
-            android:layout_marginEnd="40dp"
             android:contentDescription="@string/cd_pause"
             android:src="@drawable/ic_pause" />
 
-        <ImageButton
-            android:id="@+id/btn_next"
-            style="@style/OverlayButton"
-            android:layout_width="80dp"
-            android:layout_height="80dp"
-            android:contentDescription="@string/cd_next"
-            android:src="@drawable/ic_next" />
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1">
+
+            <TextView
+                android:id="@+id/hint_next"
+                style="@style/OverlayHint"
+                android:contentDescription="@string/cd_next"
+                android:text="@string/hint_next" />
+        </FrameLayout>
     </LinearLayout>
     <!-- Vertical like Android's own volume bar, under the close button. -->
     <LinearLayout

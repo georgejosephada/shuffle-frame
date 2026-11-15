@@ -34,8 +34,16 @@ Google Photos albums (photos and videos), kept in sync automatically.
   library, and the tablet deletes its copy on the follow-up sync) or *Hide on this tablet only*
   (restorable from the album's menu). Share links are read-only, so the app itself can't edit
   the album.
-- The slideshow uses shuffle bags seeded from `SecureRandom`: a new order every run, and
-  everything is shown once before anything repeats. It plays offline from the local copy.
+- The slideshow uses shuffle bags seeded from `SecureRandom`, drawn from every item in every
+  album (not a fixed-size selection). *Truly random order* (on by default): every item is equally
+  likely, and each start or resume of the slideshow begins a new order (Back still reaches what
+  was shown before). With it off, *Equal time per album* can give small albums as much screen
+  time as big ones (so their items repeat much more often), and an order carries on across
+  resumes. Nothing repeats within one order until everything has been shown. It plays offline
+  from the local copy.
+- **Controls**: a tap on the left half of the slideshow goes back, on the right half forward
+  (swipes work too); either shows the controls, with *‹ Back* / *Next ›* hints in the middle of
+  each half and play/pause in the centre. A tap in the centre only shows the controls.
 - **Frame mode** (`FrameService`): whenever the screen turns off, the slideshow turns it back on
   over the lock screen (via a full-screen notification, like an alarm clock), if the conditions
   in Settings allow: battery at least N % or charging, not in battery saver, optionally not in
