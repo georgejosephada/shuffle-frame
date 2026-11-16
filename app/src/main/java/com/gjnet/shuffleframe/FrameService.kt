@@ -48,6 +48,8 @@ class FrameService : Service() {
     /** Whether an alarm, ringtone or call is sounding, and when the last one stopped. */
     private var urgentSounding = false
     private var urgentEndedAt = 0L
+    /** Whether music (e.g. a radio app) was playing at the last playback change. */
+    private var musicActive = false
 
     private val playback = object : AudioManager.AudioPlaybackCallback() {
         override fun onPlaybackConfigChanged(configs: List<AudioPlaybackConfiguration>) {
@@ -56,6 +58,11 @@ class FrameService : Service() {
             val urgent = configs.any { it.audioAttributes.usage in URGENT_USAGES }
             if (urgentSounding && !urgent) urgentEndedAt = now
             urgentSounding = urgent
+            val music = getSystemService(AudioManager::class.java).isMusicActive
+            if (music != musicActive) {
+                musicActive = music
+                musicToggled()
+            }
         }
     }
 
@@ -139,6 +146,16 @@ class FrameService : Service() {
         maybeLaunch()
     }
 
+    /**
+     * Music paused or played (from its notification) on the lock screen while the frame is about
+     * to come up: the user is using the lock screen, so the frame waits a while longer.
+     */
+    private fun musicToggled() {
+        if (!handler.hasCallbacks(launchOnWake)) return
+        handler.removeCallbacks(launchOnWake)
+        handler.postDelayed(launchOnWake, maxOf(Prefs(this).frameTouchWaitMs, WAKE_DELAY_MS))
+    }
+
     /** Plugging in or unplugging turns the screen on: the plug broadcast comes around the wake. */
     private fun wokenByCharger() = SystemClock.elapsedRealtime() - plugChangedAt < CHARGER_WAKE_WINDOW_MS
 
@@ -183,6 +200,7 @@ class FrameService : Service() {
         )
         registered = true
         running = true
+        musicActive = getSystemService(AudioManager::class.java).isMusicActive
         getSystemService(AudioManager::class.java).registerAudioPlaybackCallback(playback, handler)
         // Restarted while unlocked: an unlock may have been missed, so don't keep the frame off.
         val km = getSystemService(KeyguardManager::class.java)

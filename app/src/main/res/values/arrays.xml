@@ -7,6 +7,13 @@
     <string-array name="photo_seconds_values">
         <item>10</item><item>15</item><item>20</item><item>30</item><item>60</item><item>120</item>
     </string-array>
+    <string-array name="touch_wait_labels">
+        <item>Don\'t wait</item><item>5 seconds</item><item>10 seconds</item>
+        <item>20 seconds</item><item>30 seconds</item><item>1 minute</item>
+    </string-array>
+    <string-array name="touch_wait_values">
+        <item>0</item><item>5</item><item>10</item><item>20</item><item>30</item><item>60</item>
+    </string-array>
     <string-array name="fit_labels">
         <item>Show whole photo</item><item>Fill the screen (crop)</item>
     </string-array>

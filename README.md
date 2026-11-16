@@ -56,7 +56,11 @@ Google Photos albums (photos and videos), kept in sync automatically.
   unlock. The ongoing *Photo frame* notification, also on the lock screen, opens the slideshow
   when tapped (no unlock needed) and has Pause until unlock / Resume. Apps can't see why the
   screen woke, so a silent notification that turns the screen on counts as you (on the OnePlus
-  Pad ordinary notifications don't turn it on). Android's own screen saver isn't used because OxygenOS
+  Pad ordinary notifications don't turn it on). Using the lock screen makes the frame wait
+  (*After you use the lock screen, wait*, 10 s by default): the notification shade pulled over
+  the slideshow pauses it until that long after the shade goes up, and pausing or playing music
+  from the lock screen just after a wake delays the slideshow by as much (apps can't see plain
+  lock-screen touches). Android's own screen saver isn't used because OxygenOS
   hides it and never runs it on battery (`mDreamsEnabledOnBatteryConfig=false`).
 - A *Finish setting up* card on the main screen lists any missing one-time permission
   (notifications, full-screen notifications, installing updates, background activity).

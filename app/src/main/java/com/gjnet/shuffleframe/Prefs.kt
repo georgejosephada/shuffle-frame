@@ -13,6 +13,7 @@ class Prefs(ctx: Context) {
             "sync_interval" to (R.array.sync_values to "30"),
             "video_quality" to (R.array.video_quality_values to VIDEO_GOOGLE),
             "photo_format" to (R.array.photo_format_values to "webp"),
+            "frame_touch_wait" to (R.array.touch_wait_values to "10"),
         )
         val edit = sp.edit()
         // The default became the lowest option; installs that relied on the old default keep it.
@@ -37,7 +38,7 @@ class Prefs(ctx: Context) {
     val kenBurns get() = sp.getBoolean("ken_burns", true)
     val showCaption get() = sp.getBoolean("show_caption", true)
     val balanceAlbums get() = sp.getBoolean("balance_albums", true)
-    /** A new order on every start or resume, every item equally likely (balancing is then off). */
+    /** A new order on every start or resume of the slideshow. */
     val trulyRandom get() = sp.getBoolean("truly_random", true)
     val includeVideos get() = sp.getBoolean("include_videos", true)
     /** Video sound as a share of the tablet's media volume, 0–100 (0 = muted). */
@@ -58,6 +59,11 @@ class Prefs(ctx: Context) {
     val autoStart get() = sp.getBoolean("auto_start", false)
     val frameMode get() = sp.getBoolean("frame_mode", true)
     val frameMinBattery get() = int("frame_min_battery", 20)
+    /**
+     * How long the frame waits after the user used the lock screen (the notification shade over
+     * it, pausing music) before it starts or carries on.
+     */
+    val frameTouchWaitMs get() = int("frame_touch_wait", 10) * 1000L
     val frameSkipPowerSaver get() = sp.getBoolean("frame_skip_power_saver", true)
     val frameSkipAirplane get() = sp.getBoolean("frame_skip_airplane", false)
 

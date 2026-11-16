@@ -156,6 +156,14 @@ class SlideshowView(context: Context) : FrameLayout(context) {
     /** The item actually on screen (current may still be loading). */
     private var shown: PlayItem? = null
     private var pausedByPanel = false
+    /** Paused by [hold] (not by the user), so [endHold] may carry on. */
+    private var pausedByHold = false
+    private val resumeAfterHold = Runnable {
+        if (pausedByHold && paused) {
+            if (removePanel.visibility == VISIBLE) pausedByPanel = true else togglePause()
+        }
+        pausedByHold = false
+    }
     private var staleJob: Job? = null
     private var job: Job? = null
     private var watchJob: Job? = null
@@ -211,7 +219,7 @@ class SlideshowView(context: Context) : FrameLayout(context) {
 
         hintBack.setOnClickListener { step(forward = false) }
         hintNext.setOnClickListener { step(forward = true) }
-        pauseButton.setOnClickListener { togglePause(); pokeOverlay() }
+        pauseButton.setOnClickListener { dropHold(); togglePause(); pokeOverlay() }
         overlay.findViewById<View>(R.id.btn_close).setOnClickListener { onExit?.invoke() }
         overlay.findViewById<View>(R.id.btn_remove).setOnClickListener { showRemovePanel(true) }
         volumeSlider.addOnChangeListener { _, value, fromUser ->
@@ -323,6 +331,9 @@ class SlideshowView(context: Context) : FrameLayout(context) {
         // Off screen the fade-out never runs: come back without the controls up.
         removeCallbacks(hideOverlay)
         closePanel()
+        // A hold lasts only while on screen.
+        if (pausedByHold && paused) togglePause()
+        dropHold()
         overlay.animate().cancel()
         overlay.visibility = GONE
     }
@@ -598,6 +609,28 @@ class SlideshowView(context: Context) : FrameLayout(context) {
             closePanel()
             pokeOverlay()
         }
+    }
+
+    /** Pauses while something of the system's (the notification shade) is over the slideshow. */
+    fun hold() {
+        removeCallbacks(resumeAfterHold)
+        if (!paused) {
+            togglePause()
+            pausedByHold = true
+        }
+    }
+
+    /** Carries on [waitMs] after [hold], unless the user paused or resumed in between. */
+    fun endHold(waitMs: Long) {
+        if (!pausedByHold) return
+        removeCallbacks(resumeAfterHold)
+        postDelayed(resumeAfterHold, waitMs)
+    }
+
+    /** The user took over pausing: forget [hold]. */
+    private fun dropHold() {
+        removeCallbacks(resumeAfterHold)
+        pausedByHold = false
     }
 
     /** Hides the remove panel and resumes playback if the panel was what paused it. */

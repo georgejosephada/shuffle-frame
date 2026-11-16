@@ -25,7 +25,18 @@ open class SlideshowActivity : AppCompatActivity() {
     /** Set while this screen itself asked to unlock (to open something); it closes after. */
     private var leaving = false
     private var receiverRegistered = false
+    /** Between onStart and onStop. */
+    private var visibleNow = false
     private var unlockRegistered = false
+    /** The notification shade (or other system UI) is over the frame: it waits. */
+    private var shadeOver = false
+    /** Launched while the shade was already down (no focus a moment after starting). */
+    private val checkFocus = Runnable {
+        if (!hasWindowFocus() && onLockScreen()) {
+            shadeOver = true
+            view.hold()
+        }
+    }
 
     /**
      * Unlocking means the user wants the tablet, not the frame, so the frame always closes,
@@ -105,7 +116,21 @@ open class SlideshowActivity : AppCompatActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) hideSystemBars()
+        if (!frame) return
+        window.decorView.removeCallbacks(checkFocus)
+        // Pulling the notification shade down over the frame (to pause music, say) takes its focus:
+        // the slideshow pauses, and carries on a while after the shade goes back up.
+        if (!hasFocus && visibleNow && onLockScreen()) {
+            shadeOver = true
+            view.hold()
+        } else if (hasFocus && shadeOver) {
+            shadeOver = false
+            view.endHold(Prefs(this).frameTouchWaitMs)
+        }
     }
+
+    private fun onLockScreen() = getSystemService(PowerManager::class.java).isInteractive &&
+        getSystemService(KeyguardManager::class.java).isKeyguardLocked
 
     override fun onStart() {
         super.onStart()
@@ -122,11 +147,18 @@ open class SlideshowActivity : AppCompatActivity() {
             ContextCompat.registerReceiver(this, frameEvents, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
             receiverRegistered = true
         }
+        visibleNow = true
         view.start()
+        if (frame) {
+            // Back (or launched) under the shade: keep waiting until it goes up.
+            if (shadeOver) view.hold() else window.decorView.postDelayed(checkFocus, FOCUS_CHECK_MS)
+        }
     }
 
     override fun onStop() {
         visible--
+        visibleNow = false
+        window.decorView.removeCallbacks(checkFocus)
         view.stop()
         if (receiverRegistered) {
             unregisterReceiver(frameEvents)
@@ -184,6 +216,7 @@ open class SlideshowActivity : AppCompatActivity() {
         var turnedOffAt = 0L
             private set
         const val EXTRA_MANUAL = "manual"
+        private const val FOCUS_CHECK_MS = 1_500L
 
         private fun turnedOffByUser() { turnedOffAt = SystemClock.elapsedRealtime() }
     }
