@@ -67,7 +67,7 @@
         <ListPreference app:key="frame_min_battery" app:title="Only when battery is at least" app:defaultValue="20"
             app:entries="@array/battery_labels" app:entryValues="@array/battery_values"
             app:useSimpleSummaryProvider="true" app:dependency="frame_mode" app:iconSpaceReserved="false" />
-        <ListPreference app:key="frame_touch_wait" app:title="After you use the lock screen, wait" app:defaultValue="10"
+        <ListPreference app:key="frame_touch_wait" app:title="Wait before the slideshow starts or carries on" app:defaultValue="10"
             app:entries="@array/touch_wait_labels" app:entryValues="@array/touch_wait_values"
             app:useSimpleSummaryProvider="true" app:dependency="frame_mode" app:iconSpaceReserved="false" />
         <SwitchPreferenceCompat app:key="frame_skip_power_saver" app:title="Not in battery saver"

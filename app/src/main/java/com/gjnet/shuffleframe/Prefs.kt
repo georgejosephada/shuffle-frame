@@ -60,8 +60,8 @@ class Prefs(ctx: Context) {
     val frameMode get() = sp.getBoolean("frame_mode", true)
     val frameMinBattery get() = int("frame_min_battery", 20)
     /**
-     * How long the frame waits after the user used the lock screen (the notification shade over
-     * it, pausing music) before it starts or carries on.
+     * How long the frame always waits before it comes up (after a wake or a screen-off), and
+     * before it carries on after the notification shade was over it.
      */
     val frameTouchWaitMs get() = int("frame_touch_wait", 10) * 1000L
     val frameSkipPowerSaver get() = sp.getBoolean("frame_skip_power_saver", true)

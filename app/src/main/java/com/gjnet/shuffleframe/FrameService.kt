@@ -50,6 +50,13 @@ class FrameService : Service() {
     private var urgentEndedAt = 0L
     /** Whether music (e.g. a radio app) was playing at the last playback change. */
     private var musicActive = false
+    /**
+     * While the lock screen is on: when the wait before the frame comes up started (the wake, or
+     * music last paused or played since). 0 otherwise.
+     */
+    private var waitFrom = 0L
+    /** When the frame was last asked to come up (elapsed realtime). */
+    private var launchedAt = 0L
 
     private val playback = object : AudioManager.AudioPlaybackCallback() {
         override fun onPlaybackConfigChanged(configs: List<AudioPlaybackConfiguration>) {
@@ -72,21 +79,31 @@ class FrameService : Service() {
                 Intent.ACTION_SCREEN_OFF -> {
                     handler.removeCallbacks(launchWhenLocked)
                     handler.removeCallbacks(launchOnWake)
+                    handler.removeCallbacks(launchAfterWait)
                     // Power pressed while a slideshow was showing: the user wants the screen off,
                     // and it stays off (even after a charger or alarm wake) until they wake it.
                     // Likewise power pressed to silence an alarm or end a call (which may have
                     // covered the slideshow): it doesn't come straight back.
                     val now = SystemClock.elapsedRealtime()
-                    val byUser = SlideshowActivity.visible > 0 || now - SlideshowActivity.turnedOffAt < 5_000 ||
-                        urgentSounding || somethingElseUp() || now - urgentEndedAt < URGENT_OFF_WINDOW_MS
+                    // A frame that was only just coming up when the lock screen timed out wasn't
+                    // switched off by the user.
+                    val overFrame = now - launchedAt > JUST_LAUNCHED_MS &&
+                        (SlideshowActivity.visible > 0 || now - SlideshowActivity.turnedOffAt < 5_000)
+                    val byUser = overFrame || urgentSounding || somethingElseUp() || now - urgentEndedAt < URGENT_OFF_WINDOW_MS
                     if (byUser) setHeldOff(context, true)
+                    // The frame always waits the set time; time the lock screen was already up
+                    // untouched (it timing out) counts.
+                    val delay = waitLeft(now)
+                    waitFrom = 0
                     if (!isHeldOff(context)) {
                         waitedMs = 0
-                        launchWhenLocked.run()
+                        handler.postDelayed(launchWhenLocked, delay)
                     }
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     handler.removeCallbacks(launchWhenLocked)
+                    handler.removeCallbacks(launchAfterWait)
+                    waitFrom = if (isLocked()) SystemClock.elapsedRealtime() else 0
                     // Woken on the lock screen: back to the photos (unlocking closes them). After
                     // a moment, so whatever woke it (the charger, an alarm, a call, face unlock)
                     // is known by then.
@@ -95,6 +112,8 @@ class FrameService : Service() {
                 }
                 Intent.ACTION_USER_PRESENT -> {
                     handler.removeCallbacks(launchOnWake)
+                    handler.removeCallbacks(launchAfterWait)
+                    waitFrom = 0
                     setHeldOff(context, false)
                     getSystemService(NotificationManager::class.java).cancel(LAUNCH_ID)
                     setSnoozed(context, false)
@@ -129,8 +148,7 @@ class FrameService : Service() {
 
     private val launchOnWake = Runnable {
         if (!getSystemService(PowerManager::class.java).isInteractive) return@Runnable
-        val km = getSystemService(KeyguardManager::class.java)
-        val locked = if (km.isDeviceSecure) km.isDeviceLocked else km.isKeyguardLocked
+        val locked = isLocked()
         // Still unlocked (the lock delay): the user is at the tablet, so the next timeout counts.
         if (!locked) {
             setHeldOff(this, false)
@@ -143,17 +161,49 @@ class FrameService : Service() {
             return@Runnable
         }
         setHeldOff(this, false)
+        // A wake by the user: the photos come back once the set wait has passed (so the lock
+        // screen can be used first).
+        handler.postDelayed(launchAfterWait, wakeWaitLeft(SystemClock.elapsedRealtime()))
+    }
+
+    private val launchAfterWait = Runnable {
+        if (!getSystemService(PowerManager::class.java).isInteractive || !isLocked()) return@Runnable
+        if (somethingElseUp()) return@Runnable
         maybeLaunch()
     }
 
+    /** How much of the set wait is left: all of it, less the time the lock screen has been up. */
+    private fun waitLeft(now: Long): Long {
+        val wait = Prefs(this).frameTouchWaitMs
+        return if (waitFrom > 0) (wait - (now - waitFrom)).coerceAtLeast(0) else wait
+    }
+
     /**
-     * Music paused or played (from its notification) on the lock screen while the frame is about
-     * to come up: the user is using the lock screen, so the frame waits a while longer.
+     * [waitLeft] after a wake. A wait the lock screen's own timeout would cut short ends just
+     * before it instead, so the screen doesn't go black for a moment before the photos.
+     */
+    private fun wakeWaitLeft(now: Long): Long {
+        val wait = Prefs(this).frameTouchWaitMs
+        val w = if (wait <= LOCK_SCREEN_TIMEOUT_MS) minOf(wait, LOCK_SCREEN_TIMEOUT_MS - BEFORE_TIMEOUT_MS) else wait
+        return (w - (now - waitFrom)).coerceAtLeast(0)
+    }
+
+    private fun isLocked(): Boolean {
+        val km = getSystemService(KeyguardManager::class.java)
+        return if (km.isDeviceSecure) km.isDeviceLocked else km.isKeyguardLocked
+    }
+
+    /**
+     * Music paused or played (from its notification) on the lock screen while the frame waits to
+     * come up: the user is using the lock screen, so the wait starts over.
      */
     private fun musicToggled() {
-        if (!handler.hasCallbacks(launchOnWake)) return
-        handler.removeCallbacks(launchOnWake)
-        handler.postDelayed(launchOnWake, maxOf(Prefs(this).frameTouchWaitMs, WAKE_DELAY_MS))
+        if (waitFrom == 0L || SlideshowActivity.visible > 0) return
+        waitFrom = SystemClock.elapsedRealtime()
+        if (handler.hasCallbacks(launchAfterWait)) {
+            handler.removeCallbacks(launchAfterWait)
+            handler.postDelayed(launchAfterWait, wakeWaitLeft(waitFrom))
+        }
     }
 
     /** Plugging in or unplugging turns the screen on: the plug broadcast comes around the wake. */
@@ -223,6 +273,7 @@ class FrameService : Service() {
         running = false
         handler.removeCallbacks(launchWhenLocked)
         handler.removeCallbacks(launchOnWake)
+        handler.removeCallbacks(launchAfterWait)
         if (registered) {
             unregisterReceiver(receiver)
             getSystemService(AudioManager::class.java).unregisterAudioPlaybackCallback(playback)
@@ -259,6 +310,8 @@ class FrameService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         nm.cancel(LAUNCH_ID)
         nm.notify(LAUNCH_ID, n)
+        launchedAt = SystemClock.elapsedRealtime()
+        waitFrom = 0
     }
 
     companion object {
@@ -275,8 +328,13 @@ class FrameService : Service() {
         @Volatile var resumeAfterUpdate = false
         /** Longest lock delay to wait for before giving up on this screen-off. */
         private const val MAX_LOCK_WAIT_MS = 30 * 60_000L
-        /** Pause after a wake before the photos come back. */
+        /** After a wake, when to tell whose it was (the photos come back after the set wait). */
         private const val WAKE_DELAY_MS = 1_000L
+        /** The lock screen turns the screen off after this long untouched (Android's default). */
+        private const val LOCK_SCREEN_TIMEOUT_MS = 10_000L
+        private const val BEFORE_TIMEOUT_MS = 1_500L
+        /** A screen-off this soon after the frame was asked to come up isn't the user's. */
+        private const val JUST_LAUNCHED_MS = 2_000L
         /** A wake this close to a charger change (either side) is the charger's doing. */
         private const val CHARGER_WAKE_WINDOW_MS = 4_000L
         /** A wake this soon after an alert sound started is that alert's doing. */

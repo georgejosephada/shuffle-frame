@@ -14,8 +14,8 @@ import org.junit.runner.RunWith
 
 /**
  * Frame mode on wake, on the device (frame mode on, tablet locked, not on the charger, notification
- * sound audible): a wake that comes with a notification sound leaves the frame off, a plain wake
- * brings it back. Leaves the slideshow showing.
+ * sound audible, the wait before the frame at 10 s or less): a wake that comes with a notification
+ * sound leaves the frame off, a plain wake brings it back after the wait. Leaves the slideshow showing.
  */
 @RunWith(AndroidJUnit4::class)
 class WakeTest {
@@ -59,7 +59,7 @@ class WakeTest {
         Thread.sleep(6_000)  // past the alert-sound window
         assertTrue("no frame on the screen-off while held off", !interactive())
         shell("input keyevent KEYCODE_WAKEUP")
-        Thread.sleep(4_000)
+        Thread.sleep(13_000)  // the set wait (10 s by default), then the launch
         assertTrue("slideshow back after a user wake", visible() > 0)
         assertTrue("hold cleared by a user wake", !heldOff())
     }

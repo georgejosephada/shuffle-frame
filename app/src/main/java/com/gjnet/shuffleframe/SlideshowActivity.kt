@@ -30,13 +30,6 @@ open class SlideshowActivity : AppCompatActivity() {
     private var unlockRegistered = false
     /** The notification shade (or other system UI) is over the frame: it waits. */
     private var shadeOver = false
-    /** Launched while the shade was already down (no focus a moment after starting). */
-    private val checkFocus = Runnable {
-        if (!hasWindowFocus() && onLockScreen()) {
-            shadeOver = true
-            view.hold()
-        }
-    }
 
     /**
      * Unlocking means the user wants the tablet, not the frame, so the frame always closes,
@@ -117,7 +110,6 @@ open class SlideshowActivity : AppCompatActivity() {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) hideSystemBars()
         if (!frame) return
-        window.decorView.removeCallbacks(checkFocus)
         // Pulling the notification shade down over the frame (to pause music, say) takes its focus:
         // the slideshow pauses, and carries on a while after the shade goes back up.
         if (!hasFocus && visibleNow && onLockScreen()) {
@@ -149,16 +141,13 @@ open class SlideshowActivity : AppCompatActivity() {
         }
         visibleNow = true
         view.start()
-        if (frame) {
-            // Back (or launched) under the shade: keep waiting until it goes up.
-            if (shadeOver) view.hold() else window.decorView.postDelayed(checkFocus, FOCUS_CHECK_MS)
-        }
+        // Back under the shade: keep waiting until it goes up.
+        if (frame && shadeOver) view.hold()
     }
 
     override fun onStop() {
         visible--
         visibleNow = false
-        window.decorView.removeCallbacks(checkFocus)
         view.stop()
         if (receiverRegistered) {
             unregisterReceiver(frameEvents)
@@ -216,7 +205,6 @@ open class SlideshowActivity : AppCompatActivity() {
         var turnedOffAt = 0L
             private set
         const val EXTRA_MANUAL = "manual"
-        private const val FOCUS_CHECK_MS = 1_500L
 
         private fun turnedOffByUser() { turnedOffAt = SystemClock.elapsedRealtime() }
     }
