@@ -82,13 +82,6 @@ class SettingsActivity : AppCompatActivity() {
                 openBackup.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
                 true
             }
-            findPreference<ListPreference>("refresh_rate")?.apply {
-                val options = DisplayRate.options(requireContext())
-                entries = options.map { it.second }.toTypedArray()
-                entryValues = options.map { it.first }.toTypedArray()
-                // A choice this display doesn't offer (any more) is the system's.
-                if (value !in options.map { it.first }) value = DisplayRate.NATIVE
-            }
             for (key in listOf("frame_day_start", "frame_day_end")) {
                 findPreference<Preference>(key)?.setOnPreferenceClickListener { pickTime(key); true }
             }
@@ -183,6 +176,7 @@ class SettingsActivity : AppCompatActivity() {
             // Stored files change to match these: start on it rather than wait for the next sync.
             if (key == "video_quality" || key == "photo_format" || key == "convert_only_charging") SyncScheduler.syncNow(requireContext())
             if (key == "frame_mode") FrameService.sync(requireContext())
+            if (key in setOf("frame_mode", "frame_night_off", "frame_day_start", "frame_morning_on")) FrameService.scheduleMorning(requireContext())
             if (key == "update_status") findPreference<Preference>("check_updates")?.summary = Updater.status(requireContext())
         }
 

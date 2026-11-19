@@ -42,11 +42,6 @@ Google Photos albums (photos and videos), kept in sync automatically.
   begins a new order (Back still reaches what was shown before); with it off, an order carries
   on across resumes. Nothing repeats within one order until everything has been shown. It plays offline
   from the local copy.
-- **Refresh rate**: the system's choice, 60 Hz, or the lowest the display offers (not under
-  ~30 Hz), listed from what the display reports (newer Android lists one mode with the rest as
-  alternative rates). It's a request: over the lock screen OxygenOS already runs the slideshow at
-  60 Hz and won't go lower, since the lock screen behind still votes for 60 Hz. Brightness is
-  left to the system (auto-brightness).
 - **Controls**: a tap on the left half of the slideshow goes back, on the right half forward
   (swipes work too, even ones that start on a control); either shows the controls, with *‹ Back* / *Next ›* hints in the middle of
   each half and play/pause in the centre. A tap in the centre only shows the controls.
@@ -54,7 +49,12 @@ Google Photos albums (photos and videos), kept in sync automatically.
   over the lock screen (via a full-screen notification, like an alarm clock), if the conditions
   in Settings allow: battery at least N % or charging, not in battery saver, optionally not in
   airplane mode, and (*Off at night*, on by default) only from 07:00 to 22:00. It ends when a
-  condition fails, and doesn't turn the screen on by itself when the day starts. Pressing power over it just turns the screen
+  condition fails (at the off time the tablet then sleeps as usual). Optionally (*Turn the screen
+  on at the start time*) it comes on by itself in the morning, unless the tablet is in use or the
+  frame is paused. OxygenOS delivers app alarms in batches about every 5 minutes while the screen
+  is off, and may let even exact ones run up to an hour late (75% of the time left), so the alarm
+  steps towards the start time, halving the time left each time; the screen comes on within about
+  5 minutes of the start. (An alarm-clock alarm would be on time but shows an alarm icon.) Pressing power over it just turns the screen
   off, and it stays off until you wake the tablet yourself: that brings the slideshow back
   (after a second). Wakes you didn't make (plugging in or unplugging the charger, an alarm, a
   call, a notification that makes a sound) leave things as they were, and so does the screen

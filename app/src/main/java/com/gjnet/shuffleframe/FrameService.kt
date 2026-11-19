@@ -1,5 +1,6 @@
 package com.gjnet.shuffleframe
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -118,6 +119,8 @@ class FrameService : Service() {
                     getSystemService(NotificationManager::class.java).cancel(LAUNCH_ID)
                     setSnoozed(context, false)
                 }
+                // The morning start is set in local time.
+                Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED -> scheduleMorning(context)
                 Intent.ACTION_POWER_CONNECTED, Intent.ACTION_POWER_DISCONNECTED -> {
                     plugChangedAt = SystemClock.elapsedRealtime()
                     if (intent.action == Intent.ACTION_POWER_CONNECTED) KeepAwake.onPluggedIn(context)
@@ -245,11 +248,15 @@ class FrameService : Service() {
                 addAction(Intent.ACTION_USER_PRESENT)
                 addAction(Intent.ACTION_POWER_CONNECTED)
                 addAction(Intent.ACTION_POWER_DISCONNECTED)
+                addAction(Intent.ACTION_TIME_CHANGED)
+                addAction(Intent.ACTION_TIMEZONE_CHANGED)
             },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         registered = true
         running = true
+        instance = this
+        scheduleMorning(this)
         musicActive = getSystemService(AudioManager::class.java).isMusicActive
         getSystemService(AudioManager::class.java).registerAudioPlaybackCallback(playback, handler)
         // Restarted while unlocked: an unlock may have been missed, so don't keep the frame off.
@@ -271,6 +278,7 @@ class FrameService : Service() {
 
     override fun onDestroy() {
         running = false
+        if (instance === this) instance = null
         handler.removeCallbacks(launchWhenLocked)
         handler.removeCallbacks(launchOnWake)
         handler.removeCallbacks(launchAfterWait)
@@ -324,8 +332,14 @@ class FrameService : Service() {
         private const val CHANNEL_LAUNCH = "frame_launch"
         private const val NOTIFICATION_ID = 2
         const val LAUNCH_ID = 3
-        /** Set when an update replaced the app while a frame was showing. */
+        /** Set when an update replaced the app while a frame was showing (or the morning start found the service down). */
         @Volatile var resumeAfterUpdate = false
+        /** The running service, for the morning start (main thread). */
+        private var instance: FrameService? = null
+        private const val ACTION_MORNING = "com.gjnet.shuffleframe.FRAME_MORNING"
+        private const val EXTRA_START = "start"
+        /** The morning alarm's last step: this close to the start, it's set for the start itself. */
+        private const val LAST_STEP_MS = 30_000L
         /** Longest lock delay to wait for before giving up on this screen-off. */
         private const val MAX_LOCK_WAIT_MS = 30 * 60_000L
         /** After a wake, when to tell whose it was (the photos come back after the set wait). */
@@ -375,6 +389,66 @@ class FrameService : Service() {
             sp.edit().putBoolean(KEY_SNOOZED, snoozed).apply()
             if (running) runCatching {
                 ctx.getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, statusNotification(ctx))
+            }
+        }
+
+        /**
+         * With "Off at night" and "Turn the screen on at the start time", sets an alarm towards the
+         * next start time (after [from]); otherwise clears it. Safe to call often.
+         *
+         * OxygenOS lets an app's alarm go off up to 75% of the time left late (at most an hour),
+         * even an exact one, so the alarm steps there: each one goes off at most halfway, then sets
+         * the next, and the last is only seconds from the start. (An alarm-clock alarm would be on
+         * time, but puts an alarm icon in the status bar.)
+         */
+        fun scheduleMorning(ctx: Context, from: Long = System.currentTimeMillis()) {
+            val am = ctx.getSystemService(AlarmManager::class.java) ?: return
+            val prefs = Prefs(ctx)
+            if (!prefs.frameMode || !prefs.frameNightOff || !prefs.frameMorningOn) {
+                am.cancel(morningIntent(ctx, 0))
+                return
+            }
+            val zone = java.time.ZoneId.systemDefault()
+            val after = java.time.Instant.ofEpochMilli(from).atZone(zone)
+            var at = after.toLocalDate().atTime(prefs.frameDayStart / 60, prefs.frameDayStart % 60).atZone(zone)
+            if (!at.isAfter(after)) at = at.plusDays(1)
+            val start = at.toInstant().toEpochMilli()
+            val now = System.currentTimeMillis()
+            val left = start - now
+            val trigger = if (left > LAST_STEP_MS) now + left / 2 else start
+            val pi = morningIntent(ctx, start)
+            if (android.os.Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()) {
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger, pi)
+            } else {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger, pi)
+            }
+        }
+
+        private fun morningIntent(ctx: Context, start: Long) = PendingIntent.getBroadcast(
+            ctx, 2, Intent(ctx, Actions::class.java).setAction(ACTION_MORNING).putExtra(EXTRA_START, start),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
+        /** A morning alarm went off: a step on the way, or the start time itself. */
+        private fun morning(ctx: Context, start: Long) {
+            val now = System.currentTimeMillis()
+            if (start > 0 && now < start - 1_000) {
+                scheduleMorning(ctx, now)
+                return
+            }
+            // Tomorrow's, counted from after this start (the alarm may come a moment early).
+            scheduleMorning(ctx, maxOf(now, start) + 1_000)
+            val prefs = Prefs(ctx)
+            if (!prefs.frameMode || !prefs.frameNightOff || !prefs.frameMorningOn || isSnoozed(ctx)) return
+            val km = ctx.getSystemService(KeyguardManager::class.java)
+            val locked = if (km.isDeviceSecure) km.isDeviceLocked else km.isKeyguardLocked
+            if (ctx.getSystemService(PowerManager::class.java).isInteractive && !locked) return
+            // Switched off over the slideshow last night: a new day.
+            setHeldOff(ctx, false)
+            val service = instance
+            if (service != null) service.maybeLaunch() else {
+                resumeAfterUpdate = true
+                sync(ctx)
             }
         }
 
@@ -438,6 +512,7 @@ class FrameService : Service() {
             when (intent.action) {
                 ACTION_PAUSE -> setSnoozed(context, true)
                 ACTION_RESUME -> setSnoozed(context, false)
+                ACTION_MORNING -> morning(context, intent.getLongExtra(EXTRA_START, 0))
             }
         }
     }

@@ -23,6 +23,8 @@ class Prefs(ctx: Context) {
         // "Mute videos" became a volume level; keep what was chosen.
         if (!sp.contains("video_volume")) edit.putInt("video_volume", if (sp.getBoolean("mute_videos", true)) 0 else 100)
         edit.remove("mute_videos")
+        // The refresh rate setting is gone (the lock screen keeps the display at its own rate).
+        edit.remove("refresh_rate")
         for ((key, spec) in lists) {
             val value = sp.getString(key, null) ?: continue
             if (value !in ctx.resources.getStringArray(spec.first)) edit.putString(key, spec.second)
@@ -59,12 +61,12 @@ class Prefs(ctx: Context) {
     val autoStart get() = sp.getBoolean("auto_start", false)
     val frameMode get() = sp.getBoolean("frame_mode", true)
     val frameMinBattery get() = int("frame_min_battery", 20)
-    /** [DisplayRate.NATIVE], [DisplayRate.SIXTY] or [DisplayRate.LOWEST]. */
-    val refreshRate: String get() = sp.getString("refresh_rate", DisplayRate.NATIVE) ?: DisplayRate.NATIVE
     /** Frame mode only between [frameDayStart] and [frameDayEnd] (minutes into the day). */
     val frameNightOff get() = sp.getBoolean("frame_night_off", true)
     val frameDayStart get() = minutes("frame_day_start", 7 * 60)
     val frameDayEnd get() = minutes("frame_day_end", 22 * 60)
+    /** At [frameDayStart] the frame turns the screen on by itself. */
+    val frameMorningOn get() = sp.getBoolean("frame_morning_on", false)
     fun setMinutes(key: String, minutes: Int) =
         sp.edit().putString(key, "%02d:%02d".format(minutes / 60, minutes % 60)).apply()
     private fun minutes(key: String, default: Int): Int {
