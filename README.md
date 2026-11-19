@@ -69,6 +69,8 @@ Google Photos albums (photos and videos), kept in sync automatically.
   notification shade pulled over the slideshow pauses it until that long after the shade goes
   up (apps can't see plain lock-screen touches). Android's own screen saver isn't used because OxygenOS
   hides it and never runs it on battery (`mDreamsEnabledOnBatteryConfig=false`).
+- *Start slideshow when the app opens* only acts when you open the app from the launcher with the
+  tablet unlocked, not when Android reopens the app by itself (after an update or a frame closes).
 - A *Finish setting up* card on the main screen lists any missing one-time permission
   (notifications, full-screen notifications, installing updates, background activity).
 - **Album list backup**: an automatic copy is kept in `Download/Shuffle Frame` on the tablet;

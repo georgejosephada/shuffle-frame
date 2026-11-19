@@ -145,11 +145,23 @@ class MainActivity : AppCompatActivity() {
                     .setPositiveButton(android.R.string.ok, null)
                     .show()
             } else addAlbum(link)
-        } else if (launched && Prefs(this).autoStart && intent?.getBooleanExtra(EXTRA_NO_AUTOSTART, false) != true) {
+        } else if (launched && openedByUser(intent) && Prefs(this).autoStart) {
             lifecycleScope.launch {
                 if (withContext(Dispatchers.IO) { Store.playable().isNotEmpty() }) startSlideshow()
             }
         }
+    }
+
+    /**
+     * Opened from the launcher with the tablet unlocked. Android also recreates this screen on
+     * its own (after an update, or when a frame closes and its task comes back behind the lock
+     * screen), and auto-start must not put a slideshow up then.
+     */
+    private fun openedByUser(intent: Intent?): Boolean {
+        if (intent == null || intent.getBooleanExtra(EXTRA_NO_AUTOSTART, false)) return false
+        if (intent.action != Intent.ACTION_MAIN || !intent.hasCategory(Intent.CATEGORY_LAUNCHER)) return false
+        val locked = getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked
+        return !locked && getSystemService(android.os.PowerManager::class.java).isInteractive
     }
 
     private fun startSlideshow() = startActivity(Intent(this, SlideshowActivity::class.java))
