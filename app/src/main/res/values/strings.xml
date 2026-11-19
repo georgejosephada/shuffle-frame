@@ -123,4 +123,8 @@
         <item quantity="one">%d video waits to be converted; that only happens on the charger.</item>
         <item quantity="other">%d videos wait to be converted; that only happens on the charger.</item>
     </plurals>
+    <string name="refresh_native">System default (up to %s Hz)</string>
+    <string name="refresh_hz">%s Hz</string>
+    <string name="refresh_lowest">Lowest (%s Hz)</string>
+    <string name="night_off_summary">Frame mode stays off from %2$s to %1$s</string>
 </resources>

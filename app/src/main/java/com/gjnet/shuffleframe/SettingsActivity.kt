@@ -22,6 +22,9 @@ import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceManager
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.timepicker.MaterialTimePicker
+import com.google.android.material.timepicker.TimeFormat
+import android.text.format.DateFormat
 
 class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,6 +82,17 @@ class SettingsActivity : AppCompatActivity() {
                 openBackup.launch(arrayOf("application/json", "text/plain", "application/octet-stream"))
                 true
             }
+            findPreference<ListPreference>("refresh_rate")?.apply {
+                val options = DisplayRate.options(requireContext())
+                entries = options.map { it.second }.toTypedArray()
+                entryValues = options.map { it.first }.toTypedArray()
+                // A choice this display doesn't offer (any more) is the system's.
+                if (value !in options.map { it.first }) value = DisplayRate.NATIVE
+            }
+            for (key in listOf("frame_day_start", "frame_day_end")) {
+                findPreference<Preference>(key)?.setOnPreferenceClickListener { pickTime(key); true }
+            }
+            showDayHours()
             confirmQualityChange("video_quality", R.array.video_quality_lower, R.array.video_quality_higher)
             confirmQualityChange("photo_format", R.array.photo_format_lower, R.array.photo_format_higher)
             findPreference<Preference>("check_updates")?.setOnPreferenceClickListener {
@@ -110,6 +124,32 @@ class SettingsActivity : AppCompatActivity() {
                     .show()
                 false
             }
+        }
+
+        private fun pickTime(key: String) {
+            val prefs = Prefs(requireContext())
+            val current = if (key == "frame_day_start") prefs.frameDayStart else prefs.frameDayEnd
+            val picker = MaterialTimePicker.Builder()
+                .setTimeFormat(if (DateFormat.is24HourFormat(requireContext())) TimeFormat.CLOCK_24H else TimeFormat.CLOCK_12H)
+                .setHour(current / 60).setMinute(current % 60)
+                .setTitleText(findPreference<Preference>(key)?.title)
+                .build()
+            picker.addOnPositiveButtonClickListener {
+                prefs.setMinutes(key, picker.hour * 60 + picker.minute)
+                showDayHours()
+            }
+            picker.show(childFragmentManager, "time")
+        }
+
+        private fun showDayHours() {
+            val prefs = Prefs(requireContext())
+            val format = DateFormat.getTimeFormat(requireContext()).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
+            fun time(minutes: Int) = format.format(java.util.Date(minutes * 60_000L))
+            val start = time(prefs.frameDayStart)
+            val end = time(prefs.frameDayEnd)
+            findPreference<Preference>("frame_day_start")?.summary = start
+            findPreference<Preference>("frame_day_end")?.summary = end
+            findPreference<Preference>("frame_night_off")?.summary = getString(R.string.night_off_summary, start, end)
         }
 
         override fun onResume() {

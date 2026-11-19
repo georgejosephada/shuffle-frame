@@ -31,6 +31,7 @@ class SlideshowDream : DreamService() {
         v.closeToOpenApps = true
         setContentView(v)
         view = v
+        window?.let { DisplayRate.apply(it, this) }
     }
 
     override fun onDreamingStarted() {

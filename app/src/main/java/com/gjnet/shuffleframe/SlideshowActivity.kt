@@ -140,6 +140,7 @@ open class SlideshowActivity : AppCompatActivity() {
             receiverRegistered = true
         }
         visibleNow = true
+        DisplayRate.apply(window, this)
         view.start()
         // Back under the shade: keep waiting until it goes up.
         if (frame && shadeOver) view.hold()

@@ -6,6 +6,7 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.PowerManager
 import android.provider.Settings
+import java.time.LocalTime
 
 /** The user's rules for when the slideshow may start (and keep running) by itself. */
 object FrameConditions {
@@ -26,10 +27,25 @@ object FrameConditions {
             if (!plugged && level in 0 until prefs.frameMinBattery) return false
         }
         if (prefs.frameSkipPowerSaver && ctx.getSystemService(PowerManager::class.java).isPowerSaveMode) return false
+        if (!dayTime(prefs)) return false
         if (prefs.frameSkipAirplane &&
             Settings.Global.getInt(ctx.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0) != 0
         ) return false
         return true
+    }
+
+    /** Outside the night-off hours (if that's on). Hours may run past midnight; equal means all day. */
+    fun dayTime(prefs: Prefs, now: LocalTime = LocalTime.now()): Boolean =
+        !prefs.frameNightOff || dayTime(prefs.frameDayStart, prefs.frameDayEnd, now)
+
+    /** Whether [now] is from [start] up to [end] (minutes into the day). */
+    fun dayTime(start: Int, end: Int, now: LocalTime): Boolean {
+        val m = now.hour * 60 + now.minute
+        return when {
+            start == end -> true
+            start < end -> m in start until end
+            else -> m >= start || m < end
+        }
     }
 
     /** Broadcasts after which [allowed] may have changed. */
@@ -39,5 +55,9 @@ object FrameConditions {
         addAction(Intent.ACTION_POWER_DISCONNECTED)
         addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
         addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+        // The night-off hours (each minute, and clock or time zone changes).
+        addAction(Intent.ACTION_TIME_TICK)
+        addAction(Intent.ACTION_TIME_CHANGED)
+        addAction(Intent.ACTION_TIMEZONE_CHANGED)
     }
 }

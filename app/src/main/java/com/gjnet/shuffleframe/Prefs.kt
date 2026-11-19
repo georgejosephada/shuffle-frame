@@ -59,6 +59,20 @@ class Prefs(ctx: Context) {
     val autoStart get() = sp.getBoolean("auto_start", false)
     val frameMode get() = sp.getBoolean("frame_mode", true)
     val frameMinBattery get() = int("frame_min_battery", 20)
+    /** [DisplayRate.NATIVE], [DisplayRate.SIXTY] or [DisplayRate.LOWEST]. */
+    val refreshRate: String get() = sp.getString("refresh_rate", DisplayRate.NATIVE) ?: DisplayRate.NATIVE
+    /** Frame mode only between [frameDayStart] and [frameDayEnd] (minutes into the day). */
+    val frameNightOff get() = sp.getBoolean("frame_night_off", true)
+    val frameDayStart get() = minutes("frame_day_start", 7 * 60)
+    val frameDayEnd get() = minutes("frame_day_end", 22 * 60)
+    fun setMinutes(key: String, minutes: Int) =
+        sp.edit().putString(key, "%02d:%02d".format(minutes / 60, minutes % 60)).apply()
+    private fun minutes(key: String, default: Int): Int {
+        val parts = sp.getString(key, null)?.split(":") ?: return default
+        val h = parts.getOrNull(0)?.toIntOrNull() ?: return default
+        val m = parts.getOrNull(1)?.toIntOrNull() ?: return default
+        return if (h in 0..23 && m in 0..59) h * 60 + m else default
+    }
     /**
      * How long the frame always waits before it comes up (after a wake or a screen-off), and
      * before it carries on after the notification shade was over it.

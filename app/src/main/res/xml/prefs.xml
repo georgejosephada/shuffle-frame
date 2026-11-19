@@ -11,6 +11,9 @@
         <SwitchPreferenceCompat app:key="blur_background" app:title="Blurred background behind photos"
             app:summary="Fills the bars around photos that don't match the screen shape" app:defaultValue="true" app:iconSpaceReserved="false" />
         <SwitchPreferenceCompat app:key="ken_burns" app:title="Slow pan and zoom" app:defaultValue="true" app:iconSpaceReserved="false" />
+        <ListPreference app:key="refresh_rate" app:title="Refresh rate" app:defaultValue="native"
+            app:dialogTitle="Refresh rate (lower saves battery)"
+            app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
         <ListPreference app:key="photo_format" app:title="Photo format" app:defaultValue="webp"
             app:entries="@array/photo_format_labels" app:entryValues="@array/photo_format_values"
             app:useSimpleSummaryProvider="true" app:iconSpaceReserved="false" />
@@ -70,6 +73,10 @@
         <ListPreference app:key="frame_touch_wait" app:title="Wait before the slideshow starts or carries on" app:defaultValue="10"
             app:entries="@array/touch_wait_labels" app:entryValues="@array/touch_wait_values"
             app:useSimpleSummaryProvider="true" app:dependency="frame_mode" app:iconSpaceReserved="false" />
+        <SwitchPreferenceCompat app:key="frame_night_off" app:title="Off at night"
+            app:defaultValue="true" app:dependency="frame_mode" app:iconSpaceReserved="false" />
+        <Preference app:key="frame_day_start" app:title="On from" app:dependency="frame_night_off" app:iconSpaceReserved="false" />
+        <Preference app:key="frame_day_end" app:title="Off from" app:dependency="frame_night_off" app:iconSpaceReserved="false" />
         <SwitchPreferenceCompat app:key="frame_skip_power_saver" app:title="Not in battery saver"
             app:summary="Tip: set battery saver to turn on automatically at a level you choose, and frame mode stops there too"
             app:defaultValue="true" app:dependency="frame_mode" app:iconSpaceReserved="false" />
